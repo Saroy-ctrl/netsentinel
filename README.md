@@ -14,7 +14,8 @@ CICFlowMeter flows ──► RF (known attack families) ─┐
 
 ## Why this design wins
 - **Actually catches novel attacks.** A benign-only Isolation Forest sits next to the supervised RF. We prove it with a *Leave-One-Attack-family-Out* evaluation (the model never saw that family during training).
-- **Honest numbers.** Corrected CICIDS2017, a time-blocked split, per-class P/R/F1/**FPR**/AUC, thresholds set by an explicit false-positive budget, and a model card with limitations.
+- **Tested beyond one lab.** Trained on corrected CIC-IDS2017, tested on a *different network* (corrected CSE-CIC-IDS2018, including attack tools never seen in training), and checked against *real* honeypot traffic (LUFlow).
+- **Honest numbers.** Audited labels, a time-blocked split, per-class P/R/F1/**FPR**/AUC, thresholds set by an explicit false-positive budget, and a model card with limitations.
 - **Reduces alert fatigue instead of adding to it.** Flows are grouped into incidents, ranked P1–P4 and mapped to MITRE ATT&CK.
 - **Human in the loop.** Acknowledge / escalate / dismiss-as-FP, with an audit trail and live analyst-confirmed precision.
 - **Drift-aware.** Live PSI monitor with a retraining trigger.

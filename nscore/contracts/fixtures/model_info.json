@@ -16,5 +16,5 @@
     "binary_roc_auc": 0.98,
     "benign_fpr": 0.012
   },
-  "contract_version": "1.0.0"
+  "contract_version": "1.1.0"
 }

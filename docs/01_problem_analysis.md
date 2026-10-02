@@ -41,24 +41,27 @@ The brief also sets two rules. **Build the simple version first**, because "a sm
 
 ## Dataset decision
 
+The PS lists NSL-KDD / CICIDS2017 / UNSW-NB15, but the doc says tools and data are named **"only as examples"**. The only rule is *free and public*. We chose three datasets, each answering a different question (ADR-8 in [03](03_architecture.md)):
+
 | Dataset | Use it for | Why |
 |---|---|---|
-| **CICIDS2017, corrected version** (Engelen et al., 2021) | **Primary** | Modern attacks, flow features, per-day captures that allow time-aware splits. The correction removes the known labelling and flow bugs. |
-| CICIDS2017, original `MachineLearningCSV` | Fallback if the corrected download is unavailable | Widely used, but we must state the known label noise in the model card. |
-| UNSW-NB15 | Stretch: cross-dataset generalisation check | Different feature set, so it needs a mapping. Only attempt it if time allows. |
-| NSL-KDD | Don't use | 1999-era traffic. Judges see it as dated. |
+| **CIC-IDS2017, corrected** (Engelen/Liu et al., IEEE CNS 2022) | **Training + main evaluation** | Modern attacks, 7 families, per-day captures that allow time-aware splits. The labels were manually audited and the flow bugs fixed. |
+| **CSE-CIC-IDS2018, corrected** (same authors, same fixed extractor) | **Unseen-network test** + measured drift | Different network, one year later, **identical features** (no mapping needed). Contains attack tools absent from 2017 (DDoS-HOIC, DDoS-LOIC-UDP), so the "novel variant" test uses real traffic. |
+| **LUFlow** (Lancaster University honeypots, labelled via CTI) | **Real-world check** | Real traffic, collected continuously since 2020 (real drift). Has an `outlier` label for unexplained traffic, which is the novelty detector's target. Binary labels only and a different schema, so it gets its own feature spec and bundle. |
+| NetFlow v3 family (UQ, 2025) | Considered, not chosen | The best "standard enterprise NetFlow" story (53 shared features), but it carries the source datasets' label noise and its extractor isn't fully open. Revisit after I1. |
+| UNSW-NB15 (original), NSL-KDD, IDS2025 | Don't use | Dated, known quality issues, or (IDS2025) just CICIDS2017 rebalanced with its label errors still in. |
 
 CICIDS2017 days: Mon = benign only · Tue = FTP/SSH brute force · Wed = DoS variants + Heartbleed · Thu = web attacks + infiltration · Fri = botnet, port scan, DDoS. **This layout drives our split design** (see [02](02_doc_validation.md) and [03](03_architecture.md)).
 
 ## Scope
 
-**In scope:** offline training on CICIDS2017 · fusion of supervised and novelty detection · SHAP explanations · incident correlation and prioritisation · SOC console · Azure ML model registry · Azure OpenAI incident briefs · drift monitoring · replay-based live demo.
+**In scope:** offline training on corrected CIC-IDS2017 · cross-network evaluation on CSE-CIC-IDS2018 · real-traffic validation on LUFlow · fusion of supervised and novelty detection · SHAP explanations · incident correlation and prioritisation · SOC console · Azure ML model registry · Azure OpenAI incident briefs · drift monitoring · replay-based live demo.
 
 **Out of scope (say so explicitly in the deck):** inline blocking · claims about real zero-days (we demonstrate *families the model never saw*, which is a controlled proxy) · production-scale throughput · live capture on networks we don't own.
 
 ## Success criteria for Round 2
 
-1. Replay a held-out attack family the model **never saw in training**, and it shows up in the queue as a `Novel anomaly` incident with an explanation.
+1. Replay **real 2018 traffic from an unseen network** (including the never-trained DDoS-HOIC). The drift monitor fires, recalibration recovers, and the unseen attack is still flagged with an explanation. Backup: the holdout-family bundle shows a `Novel anomaly`.
 2. The model card reports per-class P/R/F1/FPR/AUC, the LOAO table, the operating FPR and its limitations, and every number is reproducible from the repo.
 3. One alert storm (DDoS replay) produces a small number of incidents, not thousands of rows.
 4. The drift panel visibly reacts when the traffic distribution shifts.

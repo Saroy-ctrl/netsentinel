@@ -1,4 +1,4 @@
-"""Model bundle loading. Owner: M2 (tasks M2-10, M2-11). Consumer: api startup (M3-03).
+"""Model bundle loading. Owner: M2 (tasks M2-10, M2-13). Consumer: api startup (M3-03).
 
 Contract:
   load_bundle(ref: str, cache_dir="artifacts/cache") -> Bundle
@@ -17,4 +17,4 @@ from __future__ import annotations
 
 
 def load_bundle(ref: str, cache_dir: str = "artifacts/cache"):
-    raise NotImplementedError("M2-10 / M2-11")
+    raise NotImplementedError("M2-10 / M2-13")

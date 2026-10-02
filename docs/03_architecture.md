@@ -7,7 +7,9 @@
 ```mermaid
 flowchart LR
   subgraph OFF["OFFLINE pipeline  (ml/)  - runs once per model version"]
-    D1[(CICIDS2017<br/>corrected CSVs)] --> C1[clean · dedupe · label families]
+    D1[(CIC-IDS2017 corrected<br/>train · val · test)] --> C1[dataset adapters<br/>clean · dedupe · label families]
+    D2[(CSE-CIC-IDS2018 corrected<br/>unseen network)] -.->|P3 cross-network| EV
+    D3[(LUFlow<br/>real traffic)] -.->|P4 own spec + bundle| EV
     C1 --> S1[splits<br/>time-blocked 70/15/15<br/>+ LOAO folds]
     S1 --> FT[nscore.features<br/>FlowTransformer.fit - train only]
     FT --> M1[RF binary]
@@ -55,7 +57,7 @@ netsentinel/
 │  ├─ detection/           fusion.py (M2)
 │  ├─ drift/               PSI + reference builder (M1)
 │  └─ bundle/              manifest, packager, loader w/ Azure ML + cache (M2)
-├─ ml/                     offline pipeline: data/ train/ evaluate/ explain/ registry/   (M1, M2)
+├─ ml/                     offline pipeline: data/ (adapters/) train/ evaluate/ explain/ registry/   (M1, M2)
 ├─ api/                    FastAPI service: app/ (routers, services, repo) tests/         (M3, M5 brief)
 ├─ dashboard/              Streamlit SOC console: app.py, pages/                          (M4)
 ├─ replay/                 replay engine + scenarios/*.yaml + lab capture notes           (M5)
@@ -69,11 +71,27 @@ netsentinel/
 
 ## 3. Offline pipeline
 
+### 3.0 Datasets: three datasets, three jobs
+
+The PS names datasets "only as examples"; the rule is free and public. We use three, each for a different question:
+
+| Dataset | Job | Why this one | Feature schema |
+|---|---|---|---|
+| **CIC-IDS2017, corrected** (Engelen/Liu et al., IEEE CNS 2022) | **Train, validate, test** (P1, P2) | Manually audited labels, 7 families, about 2.8M flows, laptop-sized | CIC (fixed CICFlowMeter) |
+| **CSE-CIC-IDS2018, corrected** (same authors, same fixed extractor) | **Unseen-network test** (P3): a different network one year later | **Same features as 2017, so no mapping is needed.** It contains attack tools that never appear in 2017 (**DDoS-HOIC, DDoS-LOIC-UDP**): real unseen variants, nothing synthetic | CIC (identical) |
+| **LUFlow** (Lancaster University honeypots, labelled via threat intelligence) | **Real-world check** (P4) | Real traffic, not a lab. Collected continuously since 2020, so it has genuine drift. Has an `outlier` label for "abnormal but unexplained" traffic, which is exactly what our novelty detector targets | LUFlow (16 fields): its own `feature_spec.luflow.json` |
+
+Downloads: distrinet-research.be/CNS2022 (both CIC sets + the fixed CICFlowMeter) · github.com/ruzzzzz/LUFlow (or Kaggle). CSE-CIC-IDS2018 is about 16M flows, so subsample it: all attack flows of the evaluated families (capped per class) plus a fixed-seed benign sample.
+
+**Dataset adapters** (`ml/data/adapters/{cic2017,cic2018,luflow}.py`) turn each source into one canonical frame: metadata columns + features (named per the matching feature spec) + `family` + `period` (day or month). Everything downstream (transformer, models, evaluation) reads only that canonical frame and is driven by the feature spec, so no dataset needs special-case code.
+
 ### 3.1 Data → families
-- Source: the corrected CICIDS2017 (fall back to the original and document the label noise).
+- Source for training: corrected CIC-IDS2017 (fall back to the original only if the download fails, and document the label noise).
 - Drop from features, keep as metadata: `Flow ID`, `Source IP`, `Destination IP`, `Source Port`, `Timestamp`. `Destination Port` is an open experiment (B12).
 - Inf/NaN: count them per column, then drop or clip them, and record the counts in `data_profile.md`. Remove exact duplicates.
 - Label mapping → `AttackFamily`: `BENIGN` · `DoS` (Hulk, GoldenEye, slowloris, Slowhttptest) · `DDoS` · `PortScan` · `BruteForce` (FTP-/SSH-Patator) · `WebAttack` (Brute Force, XSS) · `Botnet` · `Rare` (Heartbleed, Infiltration, SQL Injection). "Attempted" labels in the corrected set map to `BENIGN`, as the dataset authors do. Document this.
+- 2018 mapping (evaluation only): FTP/SSH-BruteForce → `BruteForce` · DoS variants → `DoS` · DDoS-LOIC-HTTP → `DDoS` · **DDoS-HOIC, DDoS-LOIC-UDP → `DDoS` but tagged `unseen_variant`** · Web attacks → `WebAttack` · Botnet-Ares → `Botnet` · Infiltration (including its NMAP portscan step) → `Rare`. 2018 has no standalone PortScan family.
+- LUFlow mapping: `benign` → `BENIGN`, `malicious` → attack (binary only; there are no families), `outlier` → **left out of supervised training** and used only to measure novelty capture.
 - Correlation pruning (|ρ| > 0.95, keep the more interpretable feature). The result is written to `nscore/contracts/feature_spec.json`.
 
 ### 3.2 Evaluation protocol
@@ -82,7 +100,11 @@ netsentinel/
 |---|---|---|---|
 | **P1 time-blocked** | For each (day, label) group, sort by timestamp: first 70% → train, next 15% → val, last 15% → test. Indices are saved to `data/splits/` so every run uses the exact same split. | How well do we detect *known* families? | Main per-class metrics, threshold tuning (val), model card |
 | **P2 LOAO** | For each family F in {DoS, DDoS, PortScan, BruteForce, WebAttack, Botnet}: remove F completely from train and val, retrain RF and IF on a fixed-size subsample, then measure recall on F's test flows at the calibrated benign FPR. | **Can we catch a family we've never seen?** | The headline chart: RF-only recall vs fusion recall for each held-out family |
-| P3 cross-day (optional) | Train on Mon–Wed, test on Thu–Fri, binary only. | How much does performance degrade over time? | Drift discussion |
+| **P3 cross-network** (2017 → 2018) | Score the 2018 subsample with bundle v1 **unchanged**. Report binary recall, per-family recall for shared families, recall on the **unseen variants** (HOIC, LOIC-UDP), benign FPR, and PSI per feature. | **What happens when we deploy to a new network, and does the drift monitor notice?** | Generalisation panel, drift section of the model card, demo act 4 |
+| **P3b site recalibration** | Refit only the Isolation Forest and the thresholds on a **label-free benign baseline window** from the 2018 network (the first hours of capture, before any attack), then re-run P3. The RF stays as is. | Can we onboard a new site without new labels? | Shows the drift → recalibrate → recover loop |
+| **P4 real-world temporal** (LUFlow) | Same pipeline, with LUFlow's own feature spec and its own bundle. Train RF + IF on the earliest month(s) and test month by month afterwards. Also measure the share of `outlier` flows the Isolation Forest flags as novel, compared with the RF. | Does it hold on real traffic, and how fast does it decay? | Real-world slide, drift curve, Q&A answer to "lab data only?" |
+
+P3 and P4 results go into `EvaluationReport.external` (contract v1.1.0). **Expect P3 numbers to be much worse than P1.** That's the point: it's the honest measurement of drift, and the recovery in P3b is the story.
 
 Metrics reported per class: precision, recall, F1, **FPR**, support, one-vs-rest ROC-AUC. Overall: macro-F1, binary ROC-AUC and PR-AUC, benign FPR at the operating point. Confusion matrix saved as PNG and JSON. Probability calibration checked with a reliability plot.
 
@@ -121,9 +143,13 @@ bundle_vN/
   confusion_matrix.png, loao.png, reliability.png
 ```
 
-There are two bundles in the registry:
-- `netsentinel-bundle:N`, the full model.
-- `netsentinel-demo-holdout-botnet:N`, trained **without Botnet**. It powers the "this model has never seen a botnet" demo moment, and having two models in the registry shows why the registry is there.
+Bundles in the registry (each one is versioned and tagged):
+- `netsentinel-bundle:N`: the full model, trained on CIC-IDS2017.
+- `netsentinel-bundle-site2018:N`: the same RF with the Isolation Forest and thresholds **recalibrated** on the 2018 benign baseline (P3b). Demo act 4 switches to it live.
+- `netsentinel-demo-holdout-botnet:N`: trained **without Botnet**, the visual for LOAO.
+- `netsentinel-luflow:N`: offline evaluation only (P4). It uses a different feature spec, so the API refuses to serve CIC flows with it, and the manifest's `feature_spec_sha256` enforces that.
+
+Several real versions in the registry, each with a reason to exist, is what makes "we use Azure ML for model management" a true claim.
 
 ### 3.6 Registry
 Azure ML workspace. `MLClient.models.create_or_update` with tags `{dataset, split, contract_version, macro_f1, benign_fpr, held_out}`. The API resolves `MODEL_REF=azureml:netsentinel-bundle@latest`, downloads it to `artifacts/cache/`, and verifies the sha256s. If Azure is unreachable, it falls back to the cached copy. `local:` refs are supported for development.
@@ -220,7 +246,7 @@ Benign flows: keep at most N recent ones (configurable), because drift only need
 |---|---|---|
 | **Live Queue** | Incidents sorted by priority. P1–P4 colour bands. Chips for `Known attack` and `Novel anomaly`. Header counters: open P1s, novel anomalies, flows/sec. Auto-refreshes every 3 s and highlights new rows. | filter by status/verdict/family/band, click through to detail |
 | **Incident Detail** | SHAP bar chart · **"vs normal"** table (value vs benign median) · MITRE badge · flow metadata · brief panel (loading, LLM or template label) · action timeline | Acknowledge / Escalate / Confirm / Dismiss as FP, with a note |
-| **Model & Evaluation** | Model version and registry ref · per-class table · confusion matrix · **LOAO chart** · operating FPR · limitations | — |
+| **Model & Evaluation** | Model version and registry ref · per-class table · confusion matrix · **LOAO chart** · **Generalisation panel** (P3 / P3b / P4 from `external`) · operating FPR · limitations | — |
 | **Drift & Health** | PSI per feature against the 0.10/0.25 lines · status banner · throughput · latency | — |
 | **Analyst Metrics** | Analyst-confirmed precision · FP dismiss rate · MTTA · actions per analyst | — |
 
@@ -230,9 +256,13 @@ Analyst sign-in is a name plus a role in session state, sent as `X-Analyst`. Rea
 1. **Calm.** Benign replay runs, the queue is empty, drift is `ok`, and the model page shows v N from Azure ML.
 2. **Known attack.** A brute-force burst arrives as one P2 incident with 260 flows, mapped to MITRE T1110. Generate the brief, then Escalate.
 3. **Alert storm.** The DDoS replay runs: 4,000+ flows become **one** incident. "That's the alert-fatigue answer."
-4. **The money shot.** Reload the **holdout bundle** (it has never seen a botnet) and replay botnet traffic. The RF stays quiet and the Isolation Forest fires, so it appears as **Novel anomaly** with a SHAP explanation. Drift moves to `watch`. Show the LOAO chart: "here's that result across every family, measured properly".
-5. **Honesty.** Dismiss a low-confidence incident as a false positive and the analyst-confirmed precision updates live. Walk through the limitations slide.
-6. Fallback: a recorded video of steps 1–5. Briefs fall back to the template if Azure OpenAI is unreachable.
+4. **The money shot: a new network.** Replay **real 2018 traffic** from a network the model has never seen, including **DDoS-HOIC**, a tool absent from training.
+   - **4a.** The drift panel jumps to `alert` (the network changed) and the queue gets noisier. "This is what every model does when it moves to a new site."
+   - **4b.** Reload `bundle-site2018`, recalibrated on a label-free benign baseline. Drift drops back to `ok`, the noise clears, and the HOIC traffic still shows up as an incident with a SHAP explanation.
+   - **4c.** Show the Generalisation panel (P3 vs P3b numbers) and the LOAO chart: "measured across every family, not just this demo".
+5. **Real traffic.** One slide of LUFlow results: real honeypot traffic, decay month by month, and how many of the unexplained `outlier` flows the novelty detector flagged.
+6. **Honesty.** Dismiss a low-confidence incident as a false positive and the analyst-confirmed precision updates live. Walk through the limitations slide.
+7. Fallbacks: the holdout-botnet bundle can replace act 4 if 2018 replay misbehaves. A recorded video covers acts 1–6. Briefs fall back to the template if Azure OpenAI is unreachable.
 
 ## 7. Tech stack
 
@@ -251,10 +281,11 @@ Analyst sign-in is a name plus a role in session state, sent as `X-Analyst`. Rea
 | PS requirement | Where it's met | Evidence on demo day |
 |---|---|---|
 | Normal vs attack + attack types | `rf_binary`, `rf_multiclass` | Family label on every incident |
-| Surfaces **novel** attacks | `iforest` + `fusion.fuse` | Demo step 4 + LOAO chart |
+| Surfaces **novel** attacks | `iforest` + `fusion.fuse` | Demo act 4 (real unseen HOIC variant) + LOAO chart + LUFlow outlier capture |
+| Works beyond one lab dataset | P3 cross-network (2018), P4 real traffic (LUFlow) | Generalisation panel, act 5 |
 | Precision / recall / FPR / AUC | `ml/evaluate` → `EvaluationReport` | Model page, model card |
 | Class imbalance | class weights, SMOTE comparison, Rare bucket | Model card section + before/after table |
-| **Discuss model drift** | `nscore/drift`, `/v1/drift`, drift page, model card §Drift | Demo step 4, drift panel |
+| **Discuss model drift** | `nscore/drift`, `/v1/drift`, drift page, P3/P3b/P4, model card §Drift | **Measured** drift (2017 → 2018), recalibration recovery, LUFlow month-by-month decay, live drift panel |
 | Alert SOC, no auto-block | incidents + actions + audit log | Demo steps 2–5 |
 | Honest evaluation | time-blocked split, FPR-budget thresholds, corrected dataset, limitations | Model card, Q&A sheet |
 
@@ -269,3 +300,4 @@ Analyst sign-in is a name plus a role in session state, sent as `X-Analyst`. Rea
 | ADR-5 | Streamlit first | React first | Hackathon speed. Both call the same API. |
 | ADR-6 | SQLite (WAL) | Postgres | Zero setup. Moving later is just a URL change. |
 | ADR-7 | Rebuild SHAP explainers at load | pickle explainers | Pickled explainers break across shap versions. Rebuilding costs milliseconds. |
+| ADR-8 | Train on corrected CIC-IDS2017, test on corrected CSE-CIC-IDS2018, validate on LUFlow | CIC-IDS2017 only; NetFlow-v3 family (UQ); UNSW-NB15; NSL-KDD | The CIC pair shares one fixed extractor, so the cross-network test needs no feature mapping and the labels are manually audited. 2018 brings real unseen tools. LUFlow adds real traffic and real drift. NetFlow v3 tells the better "standard enterprise telemetry" story, but carries the source datasets' label noise and its extractor isn't fully open. Revisit after I1 if time allows. |

@@ -16,7 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"  # 1.1.0: EvaluationReport.external (cross-network + real-world results)
 
 
 class _Model(BaseModel):
@@ -216,6 +216,24 @@ class LoaoResult(_Model):
     benign_fpr: float
 
 
+class ExternalEvalResult(_Model):
+    """Evaluation on data from a DIFFERENT network / period than training (docs/03 #3.2 P3, P4)."""
+
+    dataset: str = Field(description="e.g. 'CSE-CIC-IDS2018 (corrected)' or 'LUFlow 2021-03'")
+    protocol: Literal["cross_network", "cross_network_recalibrated", "real_world_temporal"]
+    period: str | None = Field(default=None, description="time slice for temporal studies, e.g. '2021-03'")
+    binary_recall: float
+    benign_fpr: float
+    roc_auc: float | None = None
+    novel_recall: float | None = Field(
+        default=None,
+        description="recall on attack variants absent from training (e.g. DDoS-HOIC), "
+        "or share of LUFlow 'outlier' flows flagged as novel",
+    )
+    max_psi: float | None = Field(default=None, description="largest feature PSI vs training reference")
+    notes: str | None = None
+
+
 class EvaluationReport(_Model):
     model_version: str
     split_strategy: str
@@ -227,6 +245,7 @@ class EvaluationReport(_Model):
     binary_pr_auc: float
     benign_fpr: float
     loao: list[LoaoResult] = Field(default_factory=list)
+    external: list[ExternalEvalResult] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
 
 

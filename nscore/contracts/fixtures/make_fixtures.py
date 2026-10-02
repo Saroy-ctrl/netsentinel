@@ -22,6 +22,7 @@ from nscore.contracts.schemas import (
     DriftReport,
     DriftStatus,
     EvaluationReport,
+    ExternalEvalResult,
     FeatureContribution,
     FeatureDrift,
     FlowMeta,
@@ -114,6 +115,16 @@ def build() -> dict[str, object]:
         macro_f1=0.9, binary_roc_auc=0.98, binary_pr_auc=0.95, benign_fpr=0.012,
         loao=[LoaoResult(held_out_family=f, rf_only_recall=0.3, fusion_recall=0.7, benign_fpr=0.015)
               for f in fams[1:7]],
+        external=[
+            ExternalEvalResult(dataset="CSE-CIC-IDS2018 (corrected)", protocol="cross_network", binary_recall=0.55,
+                               benign_fpr=0.06, roc_auc=0.81, novel_recall=0.4, max_psi=0.41,
+                               notes="2017 model deployed unchanged on a new network"),
+            ExternalEvalResult(dataset="CSE-CIC-IDS2018 (corrected)", protocol="cross_network_recalibrated",
+                               binary_recall=0.6, benign_fpr=0.015, roc_auc=0.84, novel_recall=0.62, max_psi=0.08,
+                               notes="IsolationForest + thresholds refit on a label-free benign baseline window"),
+            ExternalEvalResult(dataset="LUFlow", protocol="real_world_temporal", period="month+1",
+                               binary_recall=0.9, benign_fpr=0.02, novel_recall=0.5, max_psi=0.12),
+        ],
         limitations=["FIXTURE DATA - not real results"],
     )
     model = ModelInfo(model_version=MODEL, bundle_ref="local:artifacts/fixture", registry="local",

@@ -209,6 +209,41 @@
       "benign_fpr": 0.015
     }
   ],
+  "external": [
+    {
+      "dataset": "CSE-CIC-IDS2018 (corrected)",
+      "protocol": "cross_network",
+      "period": null,
+      "binary_recall": 0.55,
+      "benign_fpr": 0.06,
+      "roc_auc": 0.81,
+      "novel_recall": 0.4,
+      "max_psi": 0.41,
+      "notes": "2017 model deployed unchanged on a new network"
+    },
+    {
+      "dataset": "CSE-CIC-IDS2018 (corrected)",
+      "protocol": "cross_network_recalibrated",
+      "period": null,
+      "binary_recall": 0.6,
+      "benign_fpr": 0.015,
+      "roc_auc": 0.84,
+      "novel_recall": 0.62,
+      "max_psi": 0.08,
+      "notes": "IsolationForest + thresholds refit on a label-free benign baseline window"
+    },
+    {
+      "dataset": "LUFlow",
+      "protocol": "real_world_temporal",
+      "period": "month+1",
+      "binary_recall": 0.9,
+      "benign_fpr": 0.02,
+      "roc_auc": null,
+      "novel_recall": 0.5,
+      "max_psi": 0.12,
+      "notes": null
+    }
+  ],
   "limitations": [
     "FIXTURE DATA - not real results"
   ]

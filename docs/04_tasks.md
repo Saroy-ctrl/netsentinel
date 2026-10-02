@@ -8,7 +8,7 @@ Each track has a GitHub issue with the same checklist (label `track:M1` … `tra
 
 | Track | Name | Pick this if you like… | Owns |
 |---|---|---|---|
-| **M1** | Data & Features | pandas, data cleaning, statistics | `ml/data/`, `nscore/features/`, `nscore/drift/` |
+| **M1** | Data & Features | pandas, data cleaning, statistics | `ml/data/` (incl. dataset adapters), `nscore/features/`, `nscore/drift/` |
 | **M2** | ML Modeling & MLOps | scikit-learn, experiments, Azure ML | `ml/train/ evaluate/ explain/ registry/`, `nscore/detection/`, `nscore/bundle/` |
 | **M3** | Backend & Platform | APIs, databases, DevOps | `api/`, `infra/`, `.github/workflows/` |
 | **M4** | SOC Console (Frontend) | UI/UX, visualisation | `dashboard/` |
@@ -32,7 +32,7 @@ Only **four** hard hand-offs exist: `feature_spec.json` (M1→all), mock bundle 
 |---|---|---|
 | **I0 Foundation** | `feature_spec.json` merged · mock bundle loads in the API · mock API serves all endpoints · dashboard renders every page from mock data · CI green | M1, M2, M3, M4 |
 | **I1 First real model** | bundle v1 (real data) loaded from a local ref · `replay` → `/v1/flows` → incident appears in the dashboard | all |
-| **I2 Feature complete** | Azure ML pull + cache fallback · briefs (LLM + template) · drift live · holdout-botnet bundle · LOAO chart in the UI | all |
+| **I2 Feature complete** | Azure ML pull + cache fallback · briefs (LLM + template) · drift live · **2018 cross-network results + recalibrated bundle** · LUFlow results · LOAO and Generalisation panels in the UI | all |
 | **I3 Demo ready** | 2 timed dry runs · recorded fallback video · model card + README final · deck claims checked against what's built | all |
 
 Schedule I3 at least **2–3 days before Round 2**, not the night before.
@@ -41,16 +41,19 @@ Schedule I3 at least **2–3 days before Round 2**, not the night before.
 
 ## M1 — Data & Features
 
-- [ ] **M1-01** Download the **corrected CICIDS2017** (Engelen et al., distrinet-research.be). Fall back to the original `MachineLearningCSV` if it's unavailable. Record file checksums and row counts per label in `data/README.md`. *Deps: —*
-- [ ] **M1-02 ★** Write the canonical **`nscore/contracts/feature_spec.json`**: raw → snake_case names, dtypes, clip ranges, log1p flags, and the dropped columns with reasons (identifier or leakage). Run correlation pruning (\|ρ\|>0.95). Open a PR; M2 and M3 review it. *Deps: M1-01* → **unblocks M2, M3**
-- [ ] **M1-03** `ml/data/clean.py`: Inf/NaN report and handling (counts logged, nothing silently zero-filled), dedupe, label → `AttackFamily` mapping (Rare bucket, "Attempted" → BENIGN), output parquet to `data/processed/`. *Deps: M1-01*
-- [ ] **M1-04** EDA notebook + `docs/data_profile.md`: class balance per day, missing values, top correlated pairs, what got dropped and why. *Deps: M1-03*
-- [ ] **M1-05** `ml/data/split.py`: **time-blocked split per (day, label), 70/15/15**, saved as index files plus `split_manifest.json`. A LOAO fold generator (one fold per family). Unit test: no flow index appears in two splits, and every family appears in train/val/test. *Deps: M1-03* → **unblocks M2-02**
-- [ ] **M1-06** `nscore/features/transform.py` (`FeatureSpec`, `FlowTransformer`): fit on train only, `transform(df)` and `transform_records(list[dict])` share one code path. **Parity test**: the same flows through both paths give identical arrays. *Deps: M1-02*
-- [ ] **M1-07** `nscore/drift/psi.py`: `build_reference()` (quantile bins of the top-K features) and `psi()` (epsilon-smoothed), with unit tests on synthetic shifted distributions. *Deps: M1-06*
+Datasets and their jobs: [03 §3.0](03_architecture.md#30-datasets-three-datasets-three-jobs). Corrected CIC-IDS2017 = train · corrected CSE-CIC-IDS2018 = unseen network · LUFlow = real traffic.
+
+- [ ] **M1-01** Download **corrected CIC-IDS2017 and corrected CSE-CIC-IDS2018** (distrinet-research.be/CNS2022) and **LUFlow** (github.com/ruzzzzz/LUFlow or Kaggle). Record source URLs, checksums and row counts per label in `data/README.md`. Start the large 2018 download first. *Deps: —*
+- [ ] **M1-02 ★** Write the canonical **`nscore/contracts/feature_spec.json`** (CIC schema, shared by 2017 and 2018): raw → snake_case names, dtypes, clip ranges, log1p flags, and the dropped columns with reasons (identifier or leakage). Run correlation pruning (\|ρ\|>0.95) on **2017 train only**. Open a PR; M2 and M3 review it. *Deps: M1-01* → **unblocks M2, M3**
+- [ ] **M1-03** Dataset adapters `ml/data/adapters/cic2017.py` and `cic2018.py` → canonical frame (meta + features + `family` + `period`), with Inf/NaN report (counts logged, nothing silently zero-filled), dedupe, and label → `AttackFamily` mapping (Rare bucket, "Attempted" → BENIGN, **2018 HOIC / LOIC-UDP tagged `unseen_variant`**). Output parquet to `data/processed/`. *Deps: M1-01*
+- [ ] **M1-04** EDA notebook + `docs/data_profile.md`: class balance per day, missing values, top correlated pairs, what got dropped and why, and a **2017 vs 2018 feature distribution comparison** (a first look at drift). *Deps: M1-03*
+- [ ] **M1-05** `ml/data/split.py`: **time-blocked split per (day, label), 70/15/15** on 2017, saved as index files plus `split_manifest.json`. A LOAO fold generator (one fold per family). A **2018 evaluation subsample** (all attack flows of the evaluated families, capped per class, plus a fixed-seed benign sample) and a **2018 benign baseline window** (the earliest attack-free hours) for recalibration. Unit tests: no index appears in two splits, every family appears in train/val/test, and the baseline window contains no attack labels. *Deps: M1-03* → **unblocks M2-02**
+- [ ] **M1-06** `nscore/features/transform.py` (`FeatureSpec`, `FlowTransformer`): fit on train only, `transform(df)` and `transform_records(list[dict])` share one code path, **fully driven by the spec file** (no hardcoded column names). **Parity test**: the same flows through both paths give identical arrays. *Deps: M1-02*
+- [ ] **M1-07** `nscore/drift/psi.py`: `build_reference()` (quantile bins of the top-K features) and `psi()` (epsilon-smoothed), with unit tests on synthetic shifted distributions. Sanity check: 2017-test vs 2017-train should be low, 2018 vs 2017-train should be high. *Deps: M1-06*
 - [ ] **M1-08** `ml/data/baseline_stats.py`: benign median and p95 per feature → `baseline_stats.json` (powers the "vs normal" explanations). *Deps: M1-05*
-- [ ] **M1-09** Replay extracts for M5: test-split slices per scenario (benign background, brute-force burst, DDoS, botnet) as CSVs with metadata and ground truth, ≤ 10k flows each, in `data/replay/`. *Deps: M1-05*
-- [ ] **M1-10** Data section of `docs/model_card.md`: dataset version, cleaning counts, known dataset issues (Engelen et al.), split rationale. *Deps: M1-04, M1-05*
+- [ ] **M1-09** LUFlow adapter `ml/data/adapters/luflow.py` + **`feature_spec.luflow.json`** (16 fields; IPs and timestamps → metadata), month-based periods, and `outlier` kept as a separate label (excluded from supervised training). *Deps: M1-01, M1-06*
+- [ ] **M1-10** Replay extracts for M5 in `data/replay/`: 2017 test slices (benign background, brute-force burst, DDoS, botnet) and **2018 slices (benign background + DDoS-HOIC burst)**, as CSVs with metadata and ground truth, ≤ 10k flows each. *Deps: M1-05*
+- [ ] **M1-11** Data section of `docs/model_card.md`: the three datasets and why we chose them, versions, cleaning counts, known dataset issues (Engelen/Liu et al.), split rationale, LUFlow label meanings. *Deps: M1-04, M1-05, M1-09*
 
 ## M2 — ML Modeling & MLOps
 
@@ -64,8 +67,10 @@ Schedule I3 at least **2–3 days before Round 2**, not the night before.
 - [ ] **M2-08 ★ Headline result: LOAO experiment.** For each of the 6 families, retrain without it and record recall on it for RF-only vs fusion, at the calibrated FPR. Outputs `loao` entries in the report plus `loao.png`. *Deps: M2-07, M1-05*
 - [ ] **M2-09** SHAP: `TreeExplainer` for `rf_binary` and `iforest`, a top-k local explanation function (raw value + shap + benign median), global importance, and a latency benchmark (< 50 ms/flow target). *Deps: M2-07, M1-08*
 - [ ] **M2-10** `nscore/bundle/`: packager (manifest + sha256) and `load_bundle("local:…")` with hash verification. Build **bundle v1 (full)** and **`demo-holdout-botnet`**. *Deps: M2-08, M2-09, M1-07* → **unblocks M3 real scoring (I1)**
-- [ ] **M2-11** Azure ML: create the workspace, register both bundles with tags, implement `load_bundle("azureml:…")` with a cache fallback, and **prove it works by pulling into a clean environment**. *Deps: M2-10*
-- [ ] **M2-12** Model card (`docs/model_card.md`) metrics, LOAO, operating point, **drift section**, limitations. Done with M1 (data section) and M5 (Q&A wording). *Deps: M2-08*
+- [ ] **M2-11 ★ P3 cross-network test + P3b recalibration.** Score the 2018 subsample with bundle v1 unchanged (binary recall, shared-family recall, **unseen-variant recall**, benign FPR, PSI). Then refit only the IF and the thresholds on the 2018 benign baseline window → **`bundle-site2018`**, and re-score. Both results go into `EvaluationReport.external`, plus a before/after chart. *Deps: M2-10, M1-05*
+- [ ] **M2-12** **P4 LUFlow real-world study.** Same pipeline with `feature_spec.luflow.json`: train RF + IF on the earliest month(s), test month by month (recall, FPR and PSI over time), plus the share of `outlier` flows flagged as novel by IF vs RF. Package `netsentinel-luflow` (evaluation only). Results go into `external`. *Deps: M2-07, M1-09*
+- [ ] **M2-13** Azure ML: create the workspace, register all bundles (full, site2018, holdout-botnet, luflow) with tags, implement `load_bundle("azureml:…")` with a cache fallback, and **prove it works by pulling into a clean environment**. *Deps: M2-11*
+- [ ] **M2-14** Model card (`docs/model_card.md`): metrics, LOAO, operating point, **generalisation (P3/P3b/P4)**, a **drift section with measured numbers**, limitations. Done with M1 (data section) and M5 (Q&A wording). *Deps: M2-11, M2-12*
 
 ## M3 — Backend & Platform
 
@@ -89,7 +94,7 @@ Schedule I3 at least **2–3 days before Round 2**, not the night before.
 - [ ] **M4-03** **Live Queue** page: sorted by priority, filters, header counters, 3 s auto-refresh (`st.fragment(run_every=…)`), new-row highlight, pagination for 500+ incidents. *Deps: M4-02*
 - [ ] **M4-04** **Incident Detail**: SHAP bar chart, **"vs normal" table**, MITRE badge linking to attack.mitre.org, metadata, brief panel (loading / LLM / template label), action buttons with a note, action timeline. *Deps: M4-03*
 - [ ] **M4-05** Analyst sign-in (name + role) in session state, sent as `X-Analyst`. *Deps: M4-04*
-- [ ] **M4-06** **Model & Evaluation** page: version and registry ref, per-class table, confusion-matrix heatmap, **LOAO grouped bar chart** (RF-only vs fusion), operating FPR, limitations. *Deps: M4-02*
+- [ ] **M4-06** **Model & Evaluation** page: version and registry ref, per-class table, confusion-matrix heatmap, **LOAO grouped bar chart** (RF-only vs fusion), **Generalisation panel** (P3 vs P3b vs P4 from `external`: recall, FPR and max PSI side by side), operating FPR, limitations. *Deps: M4-02*
 - [ ] **M4-07** **Drift & Health** page: PSI bars with 0.10/0.25 reference lines, status banner, throughput and latency tiles. *Deps: M4-02*
 - [ ] **M4-08** **Analyst Metrics** page: confirmed precision, FP dismiss rate, MTTA, actions per analyst. *Deps: M4-02*
 - [ ] **M4-09** Switch from the mock API to the real one at I1, and fix any contract gaps (raise a contract PR, don't hack around it). *Deps: M3-07*
@@ -102,9 +107,9 @@ Schedule I3 at least **2–3 days before Round 2**, not the night before.
 - [ ] **M5-03 ★** `api/app/services/brief.py`: `generate_brief(incident: IncidentDetail) -> Brief`. Grounded prompt (03 §4.6), confidence-band hedging, novel-anomaly wording, 8 s timeout, **deterministic template fallback**. Unit tests with a stubbed client. Built against `fixtures/incident_detail.json`, so it doesn't need the API. *Deps: M5-01, M5-02* → **unblocks M3-09**
 - [ ] **M5-04** Brief evaluation: 10 varied incidents (each family, low and high confidence, novel). Check for invented facts and correct hedging. Results table in `docs/brief_eval.md`. *Deps: M5-03*
 - [ ] **M5-05** `replay/replay.py`: reads replay CSVs → batches → `POST /v1/flows` with pacing (`--speed`), scenario files `replay/scenarios/*.yaml` (background + bursts), and live ground-truth scoring printed to the console. Built against the mock API first. *Deps: M3-01*
-- [ ] **M5-06** Demo design: write `docs/demo_script.md` (the 03 §6 storyline with timings, exact commands and expected screens) and the holdout-botnet moment. Agree with M2 on which family the holdout bundle leaves out. *Deps: M5-05, M1-09*
+- [ ] **M5-06** Demo design: write `docs/demo_script.md` (the 03 §6 storyline with timings, exact commands and expected screens) and act 4: 2018 replay (drift alert → reload `bundle-site2018` → HOIC still caught), with the holdout-botnet bundle as the backup. *Deps: M5-05, M1-10*
 - [ ] **M5-07** *(stretch)* Own-lab variant capture: two VMs on a host-only network, slow nmap scan / hping3 against **our own VM only**, fixed CICFlowMeter → CSV → replay. Document the safety and legality notes. *Deps: M5-05*
-- [ ] **M5-08** Fix the **Round 1 doc** using [02](02_doc_validation.md) A1–A10, and build the **pitch deck**. **Q&A prep sheet** covering: "it's supervised, how does it catch novel attacks?", "what if the model is wrong?", "dataset is lab traffic", "1% FPR at scale?", "drift?". *Deps: —, then update after I2*
+- [ ] **M5-08** Fix the **Round 1 doc** using [02](02_doc_validation.md) A1–A10, and build the **pitch deck**. **Q&A prep sheet** covering: "it's supervised, how does it catch novel attacks?", "what if the model is wrong?", "dataset is lab traffic" (→ LUFlow), "why these datasets?" (→ ADR-8), "1% FPR at scale?", "drift?" (→ measured 2017→2018). *Deps: —, then update after I2*
 - [ ] **M5-09** Run 2 timed end-to-end dry runs and record the fallback video. Cross-check every deck claim against what's actually built. *Deps: I2*
 
 ---
