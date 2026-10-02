@@ -2,7 +2,7 @@
 
     python -m ml.train.build_bundles                       # full bundle  -> artifacts/bundles/cic-v1
     python -m ml.train.build_bundles --holdout Botnet      # WITHOUT Botnet -> artifacts/bundles/cic-holdout-botnet
-    options: --budget 0.001  --params tune|default  --out artifacts/bundles  --rows 3519096
+    options: --budget 0.001  --params tuned|baseline  --out artifacts/bundles  --rows N (smoke test)
 
 What happens:
   1. fit transformer + both forests on the train sample (the family head on attack flows only)
@@ -37,14 +37,6 @@ from nscore.drift.psi import build_reference
 
 CURVE_BUDGETS = [0.0001, 0.0005, 0.001, 0.005, 0.01]
 FALSE_NOVEL = 0.02
-
-
-def params_from_tune() -> dict:
-    p = EXPERIMENTS / "tune" / "results.json"
-    if not p.exists():
-        return {}
-    best = json.loads(p.read_text(encoding="utf-8"))["ranked"][0]["config"]
-    return {"bin_params": {k: v for k, v in best.items()}}
 
 
 def predicted_labels(m: P.Models, X: np.ndarray, tau: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -94,7 +86,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--holdout", help="family to leave out of training (demo bundle)")
     ap.add_argument("--budget", type=float, default=0.001)
-    ap.add_argument("--params", choices=["tune", "default"], default="tune")
+    ap.add_argument("--params", choices=["tuned", "baseline"], default="tuned")
     ap.add_argument("--rows", type=int, help="train on a subsample (smoke test)")
     ap.add_argument("--out", type=Path, default=Path("artifacts/bundles"))
     a = ap.parse_args()
@@ -106,8 +98,8 @@ def main() -> None:
         train = train.sample(a.rows, random_state=SEED).reset_index(drop=True)
     tr = fit_transformer("cic", train)
     exclude = (train["family"] == a.holdout).to_numpy() if a.holdout else None
-    kw = params_from_tune() if a.params == "tune" else {}
-    print("params:", kw or "defaults", flush=True)
+    kw = {"bin_params": P.BASELINE_BIN_PARAMS} if a.params == "baseline" else {}
+    print("params:", a.params, flush=True)
     m = P.fit_models(train, tr, exclude=exclude, **kw)
     Xv, Xt = tr.transform(val), tr.transform(test)
 

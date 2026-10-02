@@ -21,7 +21,10 @@ from ml.evaluate import metrics as M
 from ml.train.common import SEED, is_attack
 from nscore.features.transform import FlowTransformer
 
-BIN_PARAMS = {"n_estimators": 100, "min_samples_leaf": 2, "class_weight": "balanced_subsample"}
+# Chosen by ml/train/tune.py (+ --confirm over 3 fresh seeds): the three best configs were equivalent within seed noise
+# (mean tool-holdout recall @0.05% FPR 0.61-0.65 vs 0.49 for BASELINE_BIN_PARAMS); this is the smallest/fastest of them.
+BIN_PARAMS = {"n_estimators": 100, "max_depth": 16, "min_samples_leaf": 100, "max_features": 0.2, "class_weight": None}
+BASELINE_BIN_PARAMS = {"n_estimators": 100, "min_samples_leaf": 2, "class_weight": "balanced_subsample"}
 FAM_PARAMS = {"n_estimators": 100, "min_samples_leaf": 2}
 
 
