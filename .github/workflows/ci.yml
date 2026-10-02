@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
 
+# gitleaks lists the PR's commits via the API; the default token has no pull-requests scope (403 on PRs)
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   lint-test:
     runs-on: ubuntu-latest
