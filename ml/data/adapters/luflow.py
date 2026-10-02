@@ -6,7 +6,10 @@
 LUFlow facts that shape the code (measured, data/README.md):
   * 16 columns; the CSV calls the inter-packet time `avg_ipt` (the repo README says `mean_ipt`)
   * src_ip / dest_ip are integers (anonymised to the owning network) -> strings, metadata only
-  * time_start / time_end are MICROSECONDS since the epoch (UTC)
+  * time_start / time_end are MICROSECONDS since the epoch (UTC), BUT in every file ~10% of rows have lost leading
+    zeros of the microsecond part (the source concatenated seconds + microseconds as text), so the number is 10x,
+    100x or 1000x too small (1975-01, 1970-07, 1970-01 dates). Exactly recoverable: first 10 digits = seconds,
+    the rest = microseconds. `fix_timestamps` repairs them; rows still >2 days from the file date are dropped.
   * dest_port / src_port can be blank (port-less protocols) -> -1
   * labels: benign / malicious / outlier. `outlier` = abnormal but unexplained; it is kept (family "Outlier") but
     must never be used as a supervised class. It is the novelty detector's showcase.
@@ -51,6 +54,14 @@ COLUMN_TYPES = (
 )
 
 
+def fix_timestamps(raw: np.ndarray) -> np.ndarray:
+    """Repair `seconds||microseconds` values whose microsecond part lost leading zeros. int64 us in, int64 us out."""
+    raw = raw.astype(np.int64)
+    digits = np.floor(np.log10(np.maximum(raw, 1))).astype(np.int64) + 1
+    pow10 = 10 ** np.maximum(digits - 10, 0)
+    return (raw // pow10) * 1_000_000 + raw % pow10
+
+
 def clean_day(tbl: pa.Table, day: str, dd: Deduper, rep: dict) -> pa.Table:
     got = set(tbl.column_names)
     if got != RAW_COLUMNS:
@@ -83,13 +94,18 @@ def clean_day(tbl: pa.Table, day: str, dd: Deduper, rep: dict) -> pa.Table:
     rep["duplicates_removed"] += int((~keep).sum())
     for f, k in Counter(fam[~keep]).items():
         rep["duplicates_by_family"][f] += k
-    for f, k in Counter(fam[keep]).items():
-        rep["family_counts"][f] += k
 
-    ts = pc.cast(tbl["time_start"], pa.timestamp("us"))
+    raw_ts = tbl["time_start"].to_numpy()
+    ts_us = fix_timestamps(raw_ts)
+    rep["timestamps_repaired"] += int((ts_us != raw_ts).sum())
+    expected = pd.Timestamp(day.replace(".", "-")).value // 1000  # file date, us
+    valid = np.abs(ts_us - expected) <= 2 * 86_400 * 1_000_000
+    rep["timestamps_dropped"] += int((keep & ~valid).sum())
+    keep &= valid
+    ts = pa.array(ts_us.astype("datetime64[us]"))
     cols = {
         "day": pa.array([day] * n), "row": pa.array(np.arange(n, dtype=np.int32)),
-        "period": pa.array(tbl["time_start"].to_numpy().astype("datetime64[us]").astype("datetime64[M]").astype(str)),
+        "period": pa.array(ts_us.astype("datetime64[us]").astype("datetime64[M]").astype(str)),
         "ts": ts,
         "src_ip": pc.cast(tbl["src_ip"], pa.string()), "src_port": src_port,
         "dst_ip": pc.cast(tbl["dest_ip"], pa.string()), "dst_port": dst_port,
@@ -98,6 +114,8 @@ def clean_day(tbl: pa.Table, day: str, dd: Deduper, rep: dict) -> pa.Table:
     }
     for i, name in enumerate(FEATURES):
         cols[name] = pa.array(X32[:, i])
+    for f, k in Counter(fam[keep]).items():
+        rep["family_counts"][f] += k
     return pa.table(cols).filter(pa.array(keep))
 
 
@@ -116,6 +134,7 @@ def process(raw: Path, out_dir: Path, max_days: int | None) -> dict:
             opts = pacsv.ConvertOptions(column_types=COLUMN_TYPES)
             tbl = pacsv.read_csv(pa.BufferReader(zf.read(member)), convert_options=opts)
         rep = {"rows_in": 0, "rows_kept": 0, "duplicates_removed": 0, "rows_with_nonfinite": 0,
+               "timestamps_repaired": 0, "timestamps_dropped": 0,
                "duplicates_by_family": Counter(), "family_counts": Counter(), "columns": {}, "seconds": 0.0}
         out = clean_day(tbl, day, dd, rep)
         rep["rows_kept"] = out.num_rows
@@ -124,7 +143,8 @@ def process(raw: Path, out_dir: Path, max_days: int | None) -> dict:
         report["days"][day] = rep
         print(f"  {day}: {rep['rows_in']:>9,} in, {rep['rows_kept']:>9,} kept ({rep['seconds']} s)")
     tot = lambda k: sum(d[k] for d in report["days"].values())  # noqa: E731
-    report["totals"] = {k: tot(k) for k in ("rows_in", "rows_kept", "duplicates_removed", "rows_with_nonfinite")}
+    report["totals"] = {k: tot(k) for k in ("rows_in", "rows_kept", "duplicates_removed", "rows_with_nonfinite",
+                                            "timestamps_repaired", "timestamps_dropped")}
     (out_dir / "clean_report.json").write_text(json.dumps(report, indent=1, default=dict) + "\n", encoding="utf-8")
     return report
 

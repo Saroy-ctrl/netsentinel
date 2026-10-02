@@ -96,6 +96,23 @@ def load_meta(processed: Path = PROCESSED) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True)
 
 
+def build_manifest(meta: pd.DataFrame, split: np.ndarray, sample: np.ndarray) -> dict:
+    names = {TRAIN: "train", VAL: "val", TEST: "test", RECAL: "recal", PURGED: "purged"}
+    cols = list(names.values())
+    key = (meta["period"].astype(str) + " / " + meta["family"].astype(str)).to_numpy()
+    counts = pd.crosstab(pd.Series(key), pd.Series(split).map(names)).reindex(columns=cols, fill_value=0)
+    scounts = pd.crosstab(pd.Series(key[sample]), pd.Series(split[sample]).map(names)).reindex(
+        columns=cols[:4], fill_value=0)
+    return {
+        "params": {"early_periods": EARLY_PERIODS, "recal_frac": RECAL_FRAC, "purge_s": PURGE_S, "seed": SEED,
+                   "train_per_label": TRAIN_PER_LABEL, "eval_per_label": EVAL_PER_LABEL,
+                   "later_test_sample": LATER_TEST_SAMPLE, "recal_sample": RECAL_SAMPLE},
+        "totals": {n: int((split == s).sum()) for s, n in names.items()},
+        "sample_totals": {names[s]: int(((split == s) & sample).sum()) for s in (TRAIN, VAL, TEST, RECAL)},
+        "counts": counts.to_dict(orient="index"), "sample_counts": scounts.to_dict(orient="index"),
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--processed", type=Path, default=PROCESSED)
@@ -109,20 +126,9 @@ def main() -> None:
     pq.write_table(pa.table({"period": meta["period"].astype(str).to_numpy(), "day": meta["day"].astype(str).to_numpy(),
                              "row": meta["row"].to_numpy(), "split": split, "in_sample": sample}),
                    a.out / "luflow_split.parquet", compression="zstd")
-    names = {TRAIN: "train", VAL: "val", TEST: "test", RECAL: "recal", PURGED: "purged"}
-    cols = list(names.values())
-    key = meta["period"].astype(str) + " / " + meta["family"].astype(str)
-    counts = pd.crosstab(key, pd.Series(split).map(names)).reindex(columns=cols, fill_value=0)
-    scounts = pd.crosstab(key[sample], pd.Series(split[sample]).map(names)).reindex(columns=cols[:4], fill_value=0)
-    manifest = {
-        "params": {"early_periods": EARLY_PERIODS, "recal_frac": RECAL_FRAC, "purge_s": PURGE_S, "seed": SEED,
-                   "train_per_label": TRAIN_PER_LABEL, "eval_per_label": EVAL_PER_LABEL,
-                   "later_test_sample": LATER_TEST_SAMPLE, "recal_sample": RECAL_SAMPLE},
-        "totals": {n: int((split == s).sum()) for s, n in names.items()},
-        "counts": counts.to_dict(orient="index"), "sample_counts": scounts.to_dict(orient="index"),
-    }
+    manifest = build_manifest(meta, split, sample)
     (a.out / "luflow_split_manifest.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
-    print(counts.to_string())
+    print(pd.DataFrame(manifest["counts"]).T.to_string())
     print("\nworking sample:", int(sample.sum()))
 
 

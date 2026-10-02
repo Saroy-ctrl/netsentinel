@@ -110,6 +110,24 @@ def load_meta(processed: Path = PROCESSED) -> pd.DataFrame:
     return pd.concat(parts, ignore_index=True)
 
 
+def build_manifest(meta: pd.DataFrame, split: np.ndarray, sample: np.ndarray) -> dict:
+    names = {TRAIN: "train", VAL: "val", TEST: "test", PURGED: "purged"}
+    cols = list(names.values())
+    key = (meta["family"].astype(str) + " / " + meta["tool"].astype(str)).to_numpy()
+    counts = pd.crosstab(pd.Series(key), pd.Series(split).map(names)).reindex(columns=cols, fill_value=0)
+    # NB: both Series must be plain-positional (same RangeIndex) or crosstab aligns on stale labels
+    in_sample = pd.crosstab(pd.Series(key[sample]), pd.Series(split[sample]).map(names)).reindex(
+        columns=cols[:3], fill_value=0)
+    return {
+        "params": {"fracs": FRACS, "purge_s": PURGE_S, "purge_max_span_frac": PURGE_MAX_SPAN_FRAC, "seed": SEED,
+                   "cap_per_tool": CAP_PER_TOOL, "benign_train": BENIGN_TRAIN, "benign_eval": BENIGN_EVAL},
+        "totals": {names[s]: int((split == s).sum()) for s in (TRAIN, VAL, TEST, PURGED)},
+        "sample_totals": {names[s]: int(((split == s) & sample).sum()) for s in (TRAIN, VAL, TEST)},
+        "counts": counts.to_dict(orient="index"),
+        "sample_counts": in_sample.to_dict(orient="index"),
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--processed", type=Path, default=PROCESSED)
@@ -125,21 +143,9 @@ def main() -> None:
                              "split": split, "in_sample": sample}),
                    a.out / "cic2018_split.parquet", compression="zstd")
 
-    names = {TRAIN: "train", VAL: "val", TEST: "test", PURGED: "purged"}
-    key = meta["family"].astype(str) + " / " + meta["tool"].astype(str)
-    cols = ["train", "val", "test", "purged"]
-    counts = pd.crosstab(key, pd.Series(split).map(names)).reindex(columns=cols, fill_value=0)
-    in_sample = pd.crosstab(key[sample], pd.Series(split[sample]).map(names)).reindex(columns=cols[:3], fill_value=0)
-    manifest = {
-        "params": {"fracs": FRACS, "purge_s": PURGE_S, "purge_max_span_frac": PURGE_MAX_SPAN_FRAC, "seed": SEED,
-                   "cap_per_tool": CAP_PER_TOOL, "benign_train": BENIGN_TRAIN, "benign_eval": BENIGN_EVAL},
-        "totals": {names[s]: int((split == s).sum()) for s in (TRAIN, VAL, TEST, PURGED)},
-        "sample_totals": {names[s]: int(((split == s) & sample).sum()) for s in (TRAIN, VAL, TEST)},
-        "counts": counts.to_dict(orient="index"),
-        "sample_counts": in_sample.to_dict(orient="index"),
-    }
+    manifest = build_manifest(meta, split, sample)
     (a.out / "split_manifest.json").write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
-    print(counts.to_string())
+    print(pd.DataFrame(manifest["counts"]).T.to_string())
     print("\nworking sample:", manifest["sample_totals"])
 
 

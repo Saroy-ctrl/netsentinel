@@ -51,7 +51,7 @@ def preference(name: str) -> tuple[int, int]:
 
 
 def build_sample(processed: Path, splits: Path) -> pd.DataFrame:
-    sp = pq.read_table(splits / "cic2018_split.parquet").to_pandas()
+    """Per day: read only that day's split rows (parquet filter pushdown), never the whole 45M-row table."""
     man = json.loads((splits / "split_manifest.json").read_text(encoding="utf-8"))
     train_by_tool = {k.split(" / ")[1]: v["train"] for k, v in man["sample_counts"].items()}
     benign_train = train_by_tool["BENIGN"]
@@ -59,21 +59,21 @@ def build_sample(processed: Path, splits: Path) -> pd.DataFrame:
     parts = []
     for f in sorted(processed.glob("*.parquet")):
         day = f.stem
-        s = sp[sp.day == day]
-        take = np.zeros(int(s.row.max()) + 1, dtype=bool)
-        take[s.row[(s.split == TRAIN) & s.in_sample].to_numpy()] = True
+        s = pq.read_table(splits / "cic2018_split.parquet", filters=[("day", "=", day)],
+                          columns=["row", "split", "in_sample"]).to_pandas()
+        take = np.zeros(int(s["row"].max()) + 1, dtype=bool)
+        take[s["row"][(s["split"] == TRAIN) & s["in_sample"]].to_numpy()] = True
         u = rng.random(len(take))
         for batch in pq.ParquetFile(f).iter_batches(batch_size=500_000,
-                                                    columns=["row", "tool", "protocol", "dst_port", *FEATURES]):
+                                                    columns=["row", "tool", "protocol", *FEATURES]):
             df = batch.to_pandas()
-            ok = take[df["row"].to_numpy()]
+            rows = df["row"].to_numpy()
             tool = df["tool"].astype(str)
-            frac = tool.map(lambda t: BENIGN_TARGET / benign_train if t == "BENIGN"
-                            else min(1.0, TOOL_CAP / max(train_by_tool.get(t, 1), 1))).to_numpy()
-            keep = ok & (u[df["row"].to_numpy()] < frac)
-            parts.append(df[keep].drop(columns=["row", "dst_port"]))
-            print(f"\r{day}: sample so far {sum(map(len, parts)):,}", end="", flush=True)
-    print()
+            frac = np.where(tool == "BENIGN", BENIGN_TARGET / benign_train,
+                            np.minimum(1.0, TOOL_CAP / tool.map(lambda t: max(train_by_tool.get(t, 1), 1))))
+            keep = take[rows] & (u[rows] < frac)
+            parts.append(df[keep].drop(columns=["row"]))
+        print(f"{day}: sample so far {sum(map(len, parts)):,}", flush=True)
     return pd.concat(parts, ignore_index=True)
 
 

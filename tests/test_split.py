@@ -76,3 +76,15 @@ def test_loao_and_tool_holdout_masks():
     assert not (mask & (m.family == "DDoS").to_numpy()).any() and mask.sum() > 0
     assert not (sp.exclude_tool(m, s, "DDoS-HOIC") & (m.tool == "DDoS-HOIC").to_numpy()).any()
     assert (sp.exclude_tool(m, s, "DDoS-HOIC") & (m.tool == "DDoS-LOIC-UDP").to_numpy()).any()  # LOIC stays
+
+
+def test_manifest_counts_are_self_consistent():
+    m = _meta()
+    s = sp.assign_splits(m)
+    a = sp.working_sample(m, s, cap_per_tool=100, benign_train=300, benign_eval=50)
+    man = sp.build_manifest(m, s, a)
+    assert sum(v["train"] for v in man["sample_counts"].values()) == man["sample_totals"]["train"]
+    assert sum(v["val"] for v in man["sample_counts"].values()) == man["sample_totals"]["val"]
+    assert sum(v["test"] for v in man["sample_counts"].values()) == man["sample_totals"]["test"]
+    assert sum(sum(v.values()) for v in man["counts"].values()) == len(m)
+    assert man["sample_counts"]["DDoS / DDoS-HOIC"]["train"] == 100  # the cap shows up under its own key

@@ -47,3 +47,13 @@ def test_sample_excludes_outliers_from_training_and_is_deterministic():
     train_sample = a & (s == base.TRAIN)
     assert not (train_sample & (m.family == "Outlier").to_numpy()).any()
     assert (a & (s == base.TEST) & (m.family == "Outlier").to_numpy()).any()  # outliers stay in the eval sample
+
+
+def test_luflow_manifest_counts_are_self_consistent():
+    m = _meta()
+    s = sl.assign_luflow(m)
+    a = sl.working_sample(m, s)
+    man = sl.build_manifest(m, s, a)
+    for split_name in ("train", "val", "test", "recal"):
+        assert sum(v[split_name] for v in man["sample_counts"].values()) == man["sample_totals"][split_name]
+    assert sum(sum(v.values()) for v in man["counts"].values()) == len(m)
