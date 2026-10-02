@@ -1,6 +1,6 @@
 # 03 — NetSentinel Final Architecture
 
-> **One line:** NetSentinel puts two detectors side by side. A Random Forest recognises known attack families. An Isolation Forest trained only on benign traffic flags anything that doesn't look normal. Their output is grouped into explained, **risk-scored incidents** for a SOC analyst. It's trained and tested on CSE-CIC-IDS2018 and shown working on real traffic (LUFlow). Nothing is ever auto-blocked.
+> **One line:** NetSentinel detects attacks with a Random Forest and names them with a second forest; when it detects an attack but can't say which family, it calls it **unfamiliar** (a novel variant). The output is grouped into explained, **risk-scored incidents** for a SOC analyst. *Measured, not assumed: a benign-only anomaly detector did not work on these flows, while the supervised forest generalised to attacks it had never seen (`docs/experiments.md`).* It's trained and tested on CSE-CIC-IDS2018 and shown working on real traffic (LUFlow). Nothing is ever auto-blocked.
 
 ## 1. System overview
 
@@ -12,9 +12,9 @@ flowchart LR
     C1 --> S1[splits<br/>time-blocked 70/15/15 + purge<br/>LOAO folds · LUFlow months]
     S1 --> FT[nscore.features<br/>FlowTransformer.fit - train only]
     FT --> M1[RF binary]
-    FT --> M2[RF multiclass<br/>CIC bundles only]
-    FT --> M3[IsolationForest<br/>benign-only]
-    M1 & M2 & M3 --> TH[threshold calibration<br/>@ benign-FPR budget]
+    FT --> M2[RF family head<br/>attack flows · CIC only]
+    FT -.-> M3[IsolationForest<br/>benign-only · LUFlow only]
+    M1 & M2 & M3 --> TH[threshold calibration<br/>benign-FPR budget + tau_family]
     TH --> EV[evaluation_report.json<br/>LOAO · LUFlow temporal · model card]
     TH --> AUX[drift_reference · baseline_stats]
     EV & AUX --> B[(model bundles<br/>manifest + sha256)]
@@ -24,7 +24,7 @@ flowchart LR
   subgraph ON["ONLINE pipeline  (api/)  - runs per flow"]
     RP[replay/ CSV<br/>2018 or LUFlow] -->|POST /v1/flows<br/>FlowBatch| V[validate vs bundle spec]
     V --> T[FlowTransformer.transform]
-    T --> DE[detection engine<br/>RF + IF -> fuse]
+    T --> DE[detection engine<br/>RF attack? · family head ·<br/>low family confidence = novel]
     DE --> X[SHAP top-5<br/>+ vs-normal baseline]
     X --> CO[incident correlator<br/>src,dst,family · 5 min]
     CO --> RS[risk engine<br/>conf x severity x burst<br/>+ MITRE]
@@ -114,9 +114,9 @@ Downloads: distrinet-research.be/CNS2022 (corrected 2018 + fixed CICFlowMeter) �
 | Protocol | How | Answers | Used for |
 |---|---|---|---|
 | **P1 time-blocked + purge** (2018) | For each (day, label) group, sort by timestamp: first 70% → train, next 15% → val, last 15% → test. **Drop flows within 60 s of each block boundary (purge)** so a single attack session can't sit on both sides. Indices are saved to `data/splits/` so every run uses the exact same split. | How well do we detect *known* families? | Main per-class metrics, threshold tuning (val), model card |
-| **P2 LOAO** (2018) | For each family F in {DoS, DDoS, BruteForce, Infiltration, Botnet} (WebAttack is too small for a held-out test): remove F completely from train and val, retrain RF + IF on a fixed-size sample, then measure recall on F's test flows at the calibrated benign FPR. | **Can we catch a family we've never seen?** | The headline chart: RF-only recall vs fusion recall for each held-out family |
-| **P2b tool holdout** (2018) | Retrain without **DDoS-HOIC** flows only (LOIC stays). Measure HOIC recall. | Does the model learn **behaviour**, not tools? | One line in `external` + a Q&A answer |
-| **P3 real-world temporal** (LUFlow) | Same pipeline with `feature_spec.luflow.json`: train RF + IF on the earliest month(s), test month by month afterwards (recall, FPR, PSI over time). Also measure the share of `outlier` flows flagged as novel by IF vs RF. | Does it hold on real traffic, and how fast does it decay? | Real-world showcase, **measured drift curve** |
+| **P2 LOAO** (2018) | For each family F in {DoS, DDoS, BruteForce, Infiltration, Botnet} (WebAttack is too small for a held-out test): remove F completely from training of BOTH heads, retrain on a fixed-size sample, then measure recall on F's test flows at benign-FPR budgets 0.01-0.5% (3 seeds, mean and range), and how many detections the family head labels **novel**. | **Can we catch a family we've never seen?** | The headline chart: held-out recall per family vs the same model trained WITH it (`seen ceiling`). Result: floods, DoS and botnet generalise; SSH brute force and internal scans do not |
+| **P2b tool holdout** (2018) | Retrain without ONE tool whose siblings stay (DDoS-HOIC, LOIC-HTTP, Hulk, GoldenEye, Slowloris). HOIC is excluded from hyper-parameter tuning so it is an untouched check. | Does the model learn **behaviour**, not tools? Does it flag an unfamiliar *variant* of a known family? | `kind=tool` rows in the report + a Q&A answer |
+| **P3 real-world temporal** (LUFlow) | Same pipeline with `feature_spec.luflow.json`: train RF + IForest on the earliest months, test month by month afterwards (recall, FPR, PSI over time). Also measure the share of `outlier` flows flagged by the IForest vs the RF (the only place the benign-only detector is evaluated against real unexplained traffic). | Does it hold on real traffic, and how fast does it decay? | Real-world showcase, **measured drift curve** |
 | **P3b recalibration** (LUFlow) | Refit only the IF + thresholds on a **label-free recent benign window** from a later month, then re-test that month. | Can we recover from drift without new labels? | Drift → recalibrate → recover story, demo act 5 |
 
 Metrics reported per class: precision, recall, F1, **FPR**, support, one-vs-rest ROC-AUC. Overall: macro-F1, binary ROC-AUC and PR-AUC, benign FPR at the operating point. Confusion matrix saved as PNG and JSON. Probability calibration checked with a reliability plot. P2b and P3/P3b go into `EvaluationReport.external`.
@@ -127,18 +127,18 @@ Why not a day-based split: in 2018, as in 2017, each attack lives on one or two 
 
 | Model | Train on | Role | Notes |
 |---|---|---|---|
-| `rf_binary` | all train flows | p(attack) | `class_weight="balanced_subsample"` by default. SMOTE compared on train only, inside the CV folds. Tune `n_estimators, max_depth, min_samples_leaf` with time-blocked CV. |
-| `rf_multiclass` | attack flows only | which family + **probabilities per family** (feed expected severity) | CIC bundles only. LUFlow has no family labels, so its bundle has `family_head = False`. |
-| `iforest` | **benign train flows only** | anomaly score → percentile of benign val scores | `contamination` isn't used for thresholding. We set `tau_anomaly` as a percentile (e.g. 99.5) instead. |
+| `rf_binary` | all train flows | p(attack) | 100 trees, depth 16, 100 samples per leaf, 20% of features per split, no class weights. **Tuned on held-out-tool recall** (in-distribution accuracy is saturated); class weights vs SMOTE made no measurable difference. Tiny: ~5 MB. |
+| `rf_multiclass` | attack flows only | which family + **probabilities per family** (feed expected severity) and its **confidence** (max probability), which is the novelty signal | CIC bundles only. LUFlow has no family labels, so its bundle has `family_head = False`. |
+| `iforest` | **benign train flows only** | anomaly percentile of benign val scores | **Optional, LUFlow bundles only.** On CIC flows it scored ROC-AUC 0.70-0.87 and ~0 recall at a usable false-alarm rate (`docs/experiments.md` §4), so CIC bundles do not ship one. |
 
-**Thresholds (M2-07):** choose `tau_binary` so that benign FPR ≤ 1.0% on val, and `tau_anomaly` = the 99.5th percentile of benign val anomaly scores (adds ≤ 0.5% FPR). The combined operating FPR is reported. Honest note: 1% of a large network's benign flows is still a lot of flows, which is exactly why the correlator exists (§4.3). Report **incidents per hour of replay** as well as per-flow FPR.
+**Thresholds (M2-07):** `tau_binary` = the lowest threshold whose benign FPR on validation is ≤ the **operating budget (0.1%)**; `tau_family` = the family-confidence level below which only 2% of *familiar* validation attacks fall (so about 2% of familiar attacks get a false "novel" label, measured on test). The full trade-off (budgets 0.01%-1%) ships in the bundle as `operating_curve.json`. Why 0.1% and not the 1% first planned: at this network's scale (~330k benign flows per hour) 1% is thousands of false alarms an hour and cuts precision at natural prevalence from 99.9% to 87%. Even 0.1% is hundreds per hour before the correlator groups them (§4.3). **All precision and counts are weighted to the real class balance** (the val/test samples keep every attack but only a quarter of benign flows).
 
 ### 3.4 Explainability
-- `shap.TreeExplainer` for `rf_binary` (known attacks) **and** for `iforest` (novel anomalies; TreeExplainer supports IsolationForest), so every alert can be explained.
+- `shap.TreeExplainer` on `rf_binary`: it explains *why the flow was flagged as an attack*, which holds for known and novel verdicts alike. Exact TreeSHAP costs ~50-110 ms per flow, so the API explains a few representative flows per incident (`fast` mode = first 25 trees) rather than every flow of an alert storm.
 - Each alert gets the top 5 `{feature, raw value, shap_value, benign median}`. The benign median comes from `baseline_stats.json` and lets the UI say "this flow's inter-arrival time is 4,000× shorter than normal".
 - Global importance is precomputed for the Model page.
 - **SHAP never changes the risk score.** One number decides the order, one explanation builds trust.
-- Latency budget: < 50 ms per flow on a laptop. Cap the tree depth and count if it runs slower.
+- Latency budget: detection is milliseconds; SHAP is the slow part (see above).
 
 ### 3.5 Model bundle (the offline → online contract)
 
@@ -149,9 +149,11 @@ bundle_vN/
   transformer.joblib       fitted FlowTransformer
   rf_binary.joblib
   rf_multiclass.joblib     (absent when family_head = False)
-  iforest.joblib
-  iforest_benign_val_scores.npy   for score -> percentile
-  thresholds.json          {"tau_binary": .., "tau_anomaly": .., "operating_fpr": ..}
+  iforest.joblib           OPTIONAL (LUFlow bundles)
+  iforest_benign_val_scores.npy   OPTIONAL, for score -> percentile
+  thresholds.json          {"tau_binary", "tau_family", "operating_fpr"} (+ "tau_anomaly" with an IForest)
+  operating_curve.json     benign FPR / recall / precision per false-alarm budget, per-family recall
+  global_importance.json   mean |SHAP| per feature (Model page)
   label_map.json           class index -> AttackFamily
   drift_reference.json     quantile bins + proportions, top-15 features + reference attack rate
   baseline_stats.json      benign median / p95 per feature
@@ -197,13 +199,11 @@ Azure ML workspace. `MLClient.models.create_or_update` with tags `{dataset, spli
 ```
 FlowRecord → transformer.transform_records → x          (rejects flows missing spec features: 422)
 p = rf_binary.predict_proba(x)[1]
-a = percentile(iforest.score_samples(x), benign_val_scores)
-v = fuse(p, a, tau_binary, tau_anomaly)
-if v == KNOWN_ATTACK:
-    if family_head: family, probs = rf_multiclass.predict / predict_proba
-    else:           family, probs = Malicious, None
-    conf = p
-if v == NOVEL_ANOMALY: family, probs = Unknown, None; conf = novel_confidence(a, tau_anomaly)
+if p >= tau_binary and family_head:
+    probs = rf_multiclass.predict_proba(x); closest = argmax(probs); fconf = max(probs)
+v = fuse(p, a, tau_binary, tau_anomaly, fconf, tau_family)   # a = IForest percentile (LUFlow only, else 0)
+if v == KNOWN_ATTACK:  family = closest if family_head else Malicious;  conf = p
+if v == NOVEL_ANOMALY: family = Unknown (closest_family = closest, family_confidence = fconf);  conf = p
 if v != BENIGN:
     sev  = policy.expected_severity(family, probs)
     top5 = shap(explainer_for(v), x) joined with baseline_stats
@@ -313,7 +313,7 @@ When `family_head` is false (LUFlow bundle), the UI hides family-specific widget
 1. **Calm.** 2018 benign replay runs, the queue is empty, drift is `ok`, and the model page shows v N from Azure ML.
 2. **Known attack.** A brute-force burst arrives as one incident, mapped to MITRE T1110. Open it and show the **risk breakdown** ("88% sure × severity 0.7 × burst"). Generate the brief, then Escalate.
 3. **Alert storm.** Replay DDoS-HOIC: thousands of flows become **one HIGH incident**. "That's the alert-fatigue answer."
-4. **The novel attack.** Reload the **holdout bundle** (it has never seen a botnet) and replay Ares botnet traffic. The RF stays quiet and the Isolation Forest fires, so it appears as **Novel anomaly** with a SHAP explanation. Show the LOAO chart: "measured across every family, not just this demo".
+4. **The novel attack.** Reload the **holdout bundle** (trained without any botnet) and replay Ares botnet traffic. The forest still flags it, but the family head can't place it, so the incident appears as **Novel anomaly** ("closest known family: X, 55% sure") with a SHAP explanation. Then reload the full bundle: the same traffic becomes a named **Botnet** incident. Show the LOAO chart: "measured across every family, not just this demo".
 5. **Real traffic.** Reload the **LUFlow bundle** and replay real honeypot traffic from a **later month**. Real attackers show up as incidents, unexplained `outlier` traffic gets flagged as novel, and **drift jumps to `alert`** because the internet changed since training. Reload **LUFlow-recal** (refit on a recent benign window, no labels needed) and drift drops back to `ok`. Show the month-by-month chart.
 6. **Honesty.** Dismiss a low-confidence incident as a false positive and the analyst-confirmed precision updates live. Walk through the limitations slide.
 7. Fallbacks: a recorded video of acts 1–6. Briefs fall back to the template if Azure OpenAI is unreachable. Bundles load from the local cache if Azure ML is unreachable.
@@ -335,7 +335,7 @@ When `family_head` is false (LUFlow bundle), the UI hides family-specific widget
 | PS requirement | Where it's met | Evidence on demo day |
 |---|---|---|
 | Normal vs attack + attack types | `rf_binary`, `rf_multiclass` | Family label on every 2018 incident |
-| Surfaces **novel** attacks | `iforest` + `fusion.fuse` | Demo act 4 + LOAO chart + LUFlow outlier capture (act 5) |
+| Surfaces **novel** attacks | binary RF generalisation + family-head confidence (`fusion.fuse`) | Demo act 4 + leave-one-out tables (floods/DoS yes; botnet and SSH brute force only at 0.1-0.5% budgets; Nmap scans and LOIC-HTTP no) + LUFlow outlier capture (act 5) |
 | Precision / recall / FPR / AUC | `ml/evaluate` → `EvaluationReport` | Model page, model card |
 | Class imbalance | class weights, SMOTE comparison, low-support rule | Model card section + before/after table |
 | **Discuss model drift** | `nscore/drift`, `/v1/drift`, drift page, P3/P3b, model card §Drift | **Measured** decay on real traffic (LUFlow month by month), live drift alert and recovery in act 5 |
@@ -347,7 +347,7 @@ When `family_head` is false (LUFlow bundle), the UI hides family-specific widget
 
 | # | Decision | Alternatives considered | Why |
 |---|---|---|---|
-| ADR-1 | RF + benign-only Isolation Forest fusion | RF only; autoencoder | RF only can't address "novel". An autoencoder is slower to train and to explain. IF has TreeSHAP support and trains in seconds. |
+| ADR-1 (**revised after measurement**) | Binary RF detects; family-head confidence marks unfamiliar attacks. IsolationForest optional, LUFlow only | Original: RF + benign-only IsolationForest fusion; autoencoder | We assumed a supervised RF cannot detect unseen attacks and built a benign-only IForest for that. **Measured on CIC-IDS2018: the IForest has ROC-AUC 0.70-0.87 and ~0 recall at a usable false-alarm rate; the supervised RF detects held-out families/tools (floods, DoS, botnet) at strict budgets and the family head's confidence separates unfamiliar from familiar attacks with ROC-AUC 0.997-1.000.** Evidence: `docs/experiments.md` §4-5. Known gaps (test, 3 seeds): internal Nmap scans and the LOIC-HTTP tool are not detected when unseen; SSH brute force (97% at 0.1% budget, 29% at 0.05%) and botnet (66% at 0.1%, 99% at 0.5%) only at looser budgets. |
 | ADR-2 | Purged time-blocked per-class split + LOAO | day-based split; random split | A day-based split removes whole families from training. A random split leaks sessions. |
 | ADR-3 | Incidents, not per-flow alerts | per-flow alerts | Per-flow alerts make alert fatigue worse, which contradicts the pitch. |
 | ADR-4 | Contract-first monorepo with shared `nscore` | separate repos; no contracts | Lets 5 people work in parallel and avoids train/serve skew. |
@@ -356,3 +356,4 @@ When `family_head` is false (LUFlow bundle), the UI hides family-specific widget
 | ADR-7 | Rebuild SHAP explainers at load | pickle explainers | Pickled explainers break across shap versions. Rebuilding costs milliseconds. |
 | ADR-8 | Corrected CSE-CIC-IDS2018 for train/val/test; LUFlow as a live real-traffic showcase with its own bundle | CIC-IDS2017; 2017 + 2018 cross-network; NetFlow-v3 family; UNSW-NB15 | 2018 is the larger, more varied labelled network with more attack tools and rare-class examples. The labels are audited. LUFlow adds real traffic and **real drift**, which 2018's scripted benign traffic lacks. One labelled dataset keeps M1's workload realistic. Trade-off: no same-schema cross-network test (accepted). |
 | ADR-9 | Risk = confidence × expected severity × burst (+ novelty bonus), 3 levels | raw confidence; per-flow scores; P1–P4 bands | Adopts the team's risk doc (confidence ≠ consequence, 3 levels, defensible weights) and adds expected severity, incident-level burst and novelty scoring. |
+| ADR-10 | Operating budget 0.1% benign FPR; all precision weighted to natural prevalence | 1% budget (first plan); raw-sample precision | 1% is thousands of false alarms per hour and 87% precision at real prevalence; the sample-based precision (96%) is inflated by down-sampled benign. 0.1% keeps recall high on floods while staying workable behind the correlator. |

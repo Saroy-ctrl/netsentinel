@@ -6,14 +6,14 @@ Microsoft Innovate 2026 · Problem Statement **#26 — Catch the Attack the Sign
 
 ```
 CICFlowMeter flows ──► RF (known attack families) ─┐
-                   └─► IsolationForest (benign-only)┴─► fuse ─► SHAP ─► incidents ─► SOC console
+                   └─► family head (confidence = familiar?) ─► SHAP ─► incidents ─► SOC console
                                                                              │            │
                                      Azure ML registry ◄── offline training  │   Azure OpenAI brief
                                                                        drift monitor (PSI)
 ```
 
 ## Why this design wins
-- **Actually catches novel attacks.** A benign-only Isolation Forest sits next to the supervised RF. We prove it with a *Leave-One-Attack-family-Out* evaluation (the model never saw that family during training).
+- **Catches attacks it was never trained on, and says so.** Measured with leave-one-family-out and tool-holdout tests: the supervised forest detects unseen floods, DoS and botnet traffic at strict false-alarm budgets, and low family confidence labels the alert *unfamiliar*. We also tried a benign-only anomaly detector first; it didn't work on these flows, so we dropped it (`docs/experiments.md`). Internal Nmap scans and the LOIC-HTTP tool are *not* caught when unseen, and SSH brute force / botnet only at looser false-alarm budgets; we say that.
 - **Tested beyond the lab.** Trained and tested on corrected CSE-CIC-IDS2018 (a 420-machine network, 10 days, many attack tools), then shown working live on *real* honeypot traffic (LUFlow), where drift is measured, not assumed.
 - **Honest numbers.** Audited labels, a time-blocked split, per-class P/R/F1/**FPR**/AUC, thresholds set by an explicit false-positive budget, and a model card with limitations.
 - **Reduces alert fatigue instead of adding to it.** Flows are grouped into incidents, risk-scored (confidence × severity × burst → HIGH / MEDIUM / LOW) and mapped to MITRE ATT&CK.

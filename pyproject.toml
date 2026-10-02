@@ -24,6 +24,7 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "ml/data/make_profile_doc.py" = ["E501"]  # report prose + table rows
+"ml/train/*.py" = ["E501"]  # experiment scripts: docstrings and result-printing lines
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "api/tests"]
