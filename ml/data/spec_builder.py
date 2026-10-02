@@ -5,7 +5,12 @@ back by nscore.features.FlowTransformer. All numbers (clip ranges, correlations,
 never from val/test.
 
 Steps: 1) drop constant features  2) greedy correlation pruning (|Spearman rho| > threshold, keep the more basic
-feature)  3) per kept feature: clip range [q_lo, q_hi] and a log1p flag for non-negative heavy-tailed features.
+feature)  3) per kept feature: clip range and a log1p flag for non-negative heavy-tailed features.
+
+Clip ranges are computed PER CLASS GROUP (benign, each attack tool) and then widened to the union
+[min of group q_lo, max of group q_hi]. A single pooled quantile is dominated by benign traffic and flattened
+attacks' own tails (measured: 74% of XSS flows clipped on one feature). With groups, no group loses more than
+CLIP_Q of its values (for groups of < 10,000 flows: at most its single most extreme flow).
 Nothing is imputed here; the spec only records the policy (NaN -> train median, fitted by FlowTransformer).
 """
 
@@ -19,8 +24,17 @@ CLIP_Q = (0.0001, 0.9999)
 LOG1P_SKEW = 5.0
 
 
-def column_stats(df: pd.DataFrame) -> pd.DataFrame:
+def group_clip_bounds(df: pd.DataFrame, groups: pd.Series) -> tuple[pd.Series, pd.Series]:
+    lo_hi = df.groupby(groups.to_numpy(), observed=True).quantile([CLIP_Q[0], CLIP_Q[1]])
+    lo = lo_hi.xs(CLIP_Q[0], level=1).min()
+    hi = lo_hi.xs(CLIP_Q[1], level=1).max()
+    return lo, hi
+
+
+def column_stats(df: pd.DataFrame, groups: pd.Series | None = None) -> pd.DataFrame:
     q = df.quantile([CLIP_Q[0], 0.5, CLIP_Q[1]])
+    if groups is not None:
+        q.loc[CLIP_Q[0]], q.loc[CLIP_Q[1]] = group_clip_bounds(df, groups)
     s = pd.DataFrame({
         "nan_rate": df.isna().mean(),
         "n_unique": df.nunique(dropna=True),
@@ -50,9 +64,11 @@ def prune_correlated(df: pd.DataFrame, order: list[str], threshold: float = CORR
 
 def build_spec(sample: pd.DataFrame, *, raw_names: dict[str, str], preference_key, dataset: str, schema: str,
                metadata: dict[str, str], optional: dict[str, str] | None = None,
-               threshold: float = CORR_THRESHOLD) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
-    """sample: columns = candidate feature names (train only). Returns (spec, stats_df, corr_pairs_df)."""
-    stats = column_stats(sample)
+               threshold: float = CORR_THRESHOLD, groups: pd.Series | None = None
+               ) -> tuple[dict, pd.DataFrame, pd.DataFrame]:
+    """sample: columns = candidate feature names (train only). `groups` (same length) = class/tool label per row,
+    used for the per-group clip ranges. Returns (spec, stats_df, corr_pairs_df)."""
+    stats = column_stats(sample, groups)
     dropped: list[dict] = []
 
     constant = [c for c in sample if stats.at[c, "n_unique"] <= 1]
@@ -74,7 +90,8 @@ def build_spec(sample: pd.DataFrame, *, raw_names: dict[str, str], preference_ke
                          "nan_rate": round(float(s["nan_rate"]), 6), "train_median": float(s["median"])})
     spec = {
         "version": "1", "schema": schema, "dataset": dataset,
-        "sample": {"rows": int(len(sample)), "clip_quantiles": list(CLIP_Q), "corr_method": "spearman",
+        "sample": {"rows": int(len(sample)), "clip_quantiles": list(CLIP_Q), "clip_per_group": groups is not None,
+                   "corr_method": "spearman",
                    "corr_threshold": threshold, "log1p_if_skew_above": LOG1P_SKEW},
         "nan_policy": "median_train",
         "features": features,

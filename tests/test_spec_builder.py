@@ -56,3 +56,20 @@ def test_stats_use_only_given_frame_and_nans_are_counted():
     spec, stats, _ = _spec(df)
     assert abs(stats.at["b", "nan_rate"] - 0.01) < 1e-9
     assert {x["name"]: x for x in spec["features"]}["b"]["nan_rate"] == 0.01
+
+
+def test_per_group_clip_keeps_an_attack_tail_that_pooled_quantiles_would_flatten():
+    rng = np.random.default_rng(0)
+    benign = pd.DataFrame({"f": rng.normal(10, 1, 300_000)})
+    attack = pd.DataFrame({"f": rng.normal(500, 20, 20)})  # tiny group (<0.01% of rows) far above benign
+    df = pd.concat([benign, attack], ignore_index=True)
+    groups = pd.Series(["benign"] * 300_000 + ["xss"] * 20)
+    raw = {"f": "F"}
+    pooled, *_ = sb.build_spec(df, raw_names=raw, preference_key=lambda c: 0, dataset="t", schema="t", metadata={})
+    grouped, *_ = sb.build_spec(df, raw_names=raw, preference_key=lambda c: 0, dataset="t", schema="t", metadata={},
+                                groups=groups)
+    assert pooled["features"][0]["clip"][1] < 200            # pooled bound sits inside the benign range
+    assert (attack["f"] > pooled["features"][0]["clip"][1]).mean() > 0.9  # ...so 90%+ of the attack is clipped
+    assert grouped["features"][0]["clip"][1] >= attack["f"].quantile(0.9999) - 1e-6
+    assert (attack["f"] > grouped["features"][0]["clip"][1]).sum() <= 1  # at most the single most extreme flow
+    assert grouped["sample"]["clip_per_group"] is True

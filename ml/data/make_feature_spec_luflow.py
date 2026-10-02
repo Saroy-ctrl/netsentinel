@@ -84,7 +84,7 @@ def main() -> None:
     df["protocol"] = df["protocol"].astype("float32")
     spec, stats, pairs = sb.build_spec(
         df, raw_names=RAW_NAMES, preference_key=preference, dataset="LUFlow (Lancaster University honeypots, 2020-21)",
-        schema="luflow", metadata=METADATA, optional=OPTIONAL)
+        schema="luflow", metadata=METADATA, optional=OPTIONAL, groups=fam)
     spec["sample"]["labels"] = fam.value_counts().to_dict()
     SPEC_PATH.write_text(json.dumps(spec, indent=1) + "\n", encoding="utf-8", newline="\n")
     stats.to_csv(a.processed / "feature_stats.csv")

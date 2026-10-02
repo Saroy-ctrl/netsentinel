@@ -1,0 +1,176 @@
+{
+ "version": "1",
+ "schema": "luflow",
+ "dataset": "LUFlow (Lancaster University honeypots, 2020-21)",
+ "sample": {
+  "rows": 299710,
+  "clip_quantiles": [
+   0.0001,
+   0.9999
+  ],
+  "corr_method": "spearman",
+  "corr_threshold": 0.95,
+  "log1p_if_skew_above": 5.0,
+  "labels": {
+   "Malicious": 150150,
+   "BENIGN": 149560
+  }
+ },
+ "nan_policy": "median_train",
+ "features": [
+  {
+   "name": "protocol",
+   "raw_name": "proto",
+   "dtype": "float32",
+   "clip": [
+    1.0,
+    17.0
+   ],
+   "log1p": false,
+   "nan_rate": 0.0,
+   "train_median": 6.0
+  },
+  {
+   "name": "avg_ipt",
+   "raw_name": "avg_ipt",
+   "dtype": "float32",
+   "clip": [
+    0.0,
+    1452492736.1686
+   ],
+   "log1p": true,
+   "nan_rate": 0.0,
+   "train_median": 0.0
+  },
+  {
+   "name": "bytes_in",
+   "raw_name": "bytes_in",
+   "dtype": "float32",
+   "clip": [
+    0.0,
+    63868.27769999782
+   ],
+   "log1p": true,
+   "nan_rate": 0.0,
+   "train_median": 0.0
+  },
+  {
+   "name": "bytes_out",
+   "raw_name": "bytes_out",
+   "dtype": "float32",
+   "clip": [
+    0.0,
+    65077.029099999985
+   ],
+   "log1p": false,
+   "nan_rate": 0.0,
+   "train_median": 191.0
+  },
+  {
+   "name": "num_pkts_in",
+   "raw_name": "num_pkts_in",
+   "dtype": "float32",
+   "clip": [
+    0.0,
+    246.0
+   ],
+   "log1p": true,
+   "nan_rate": 0.0,
+   "train_median": 2.0
+  },
+  {
+   "name": "num_pkts_out",
+   "raw_name": "num_pkts_out",
+   "dtype": "float32",
+   "clip": [
+    1.0,
+    252.0
+   ],
+   "log1p": true,
+   "nan_rate": 0.0,
+   "train_median": 6.0
+  },
+  {
+   "name": "entropy",
+   "raw_name": "entropy",
+   "dtype": "float32",
+   "clip": [
+    0.0,
+    30.0901624643309
+   ],
+   "log1p": false,
+   "nan_rate": 0.0,
+   "train_median": 4.540534019470215
+  },
+  {
+   "name": "duration",
+   "raw_name": "duration",
+   "dtype": "float32",
+   "clip": [
+    0.0,
+    35.509166819755876
+   ],
+   "log1p": true,
+   "nan_rate": 0.0,
+   "train_median": 0.006952499970793724
+  },
+  {
+   "name": "total_entropy",
+   "raw_name": "total_entropy",
+   "dtype": "float32",
+   "clip": [
+    0.0,
+    2206952.9458748363
+   ],
+   "log1p": true,
+   "nan_rate": 0.0,
+   "train_median": 5524.454833984375
+  }
+ ],
+ "optional": [
+  {
+   "name": "dst_port",
+   "reason": "B12 experiment: honeypot services sit on fixed ports, so it flatters the lab-style result. Excluded by default; blank ports are stored as -1.",
+   "default": false
+  }
+ ],
+ "metadata": [
+  {
+   "name": "period",
+   "reason": "month, used for the drift study"
+  },
+  {
+   "name": "day",
+   "reason": "bookkeeping (source file)"
+  },
+  {
+   "name": "row",
+   "reason": "bookkeeping (row in source file)"
+  },
+  {
+   "name": "ts",
+   "reason": "time_start repaired to UTC microseconds; used only for splits and incident windows"
+  },
+  {
+   "name": "src_ip",
+   "reason": "identifier: anonymised to the owning network, would memorise sources"
+  },
+  {
+   "name": "dst_ip",
+   "reason": "identifier: anonymised to the owning network"
+  },
+  {
+   "name": "src_port",
+   "reason": "ephemeral client port: noise"
+  },
+  {
+   "name": "family",
+   "reason": "label (BENIGN / Malicious / Outlier)"
+  },
+  {
+   "name": "tool",
+   "reason": "label (raw: benign / malicious / outlier)"
+  }
+ ],
+ "dropped": []
+}

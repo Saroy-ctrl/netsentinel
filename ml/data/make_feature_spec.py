@@ -89,7 +89,7 @@ def main() -> None:
     raw = dict(zip(FEATURES, FEATURE_RAW, strict=True)) | {"protocol": "Protocol"}
     spec, stats, pairs = sb.build_spec(
         df, raw_names=raw, preference_key=preference, dataset="CSE-CIC-IDS2018 (corrected, Liu/Engelen et al. 2022)",
-        schema="cic", metadata=METADATA, optional=OPTIONAL)
+        schema="cic", metadata=METADATA, optional=OPTIONAL, groups=tools)
     spec["sample"]["tools"] = tools.value_counts().to_dict()
     SPEC_PATH.write_text(json.dumps(spec, indent=1) + "\n", encoding="utf-8", newline="\n")
     stats.to_csv(a.processed / "feature_stats.csv")
