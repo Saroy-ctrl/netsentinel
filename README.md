@@ -28,6 +28,12 @@ CICFlowMeter flows ──► RF (known attack families) ─┐
 4. [docs/04_tasks.md](docs/04_tasks.md): **team tracks M1–M5 and ordered task checklists**
 5. [CONTRIBUTING.md](CONTRIBUTING.md): branches, PRs, contract-change rule
 
+Results and evidence (generated from the code, so they match the models):
+- [docs/model_card.md](docs/model_card.md): data, models, evaluation, drift, limitations
+- [docs/experiments.md](docs/experiments.md): every experiment behind the design, including what failed
+- [docs/data_profile.md](docs/data_profile.md): dataset audit and split counts
+- [docs/azure_setup.md](docs/azure_setup.md): Azure ML workspace, registering and pulling bundles
+
 Source material is in [docs/reference/](docs/reference/).
 
 ## Quick start
@@ -35,7 +41,28 @@ Source material is in [docs/reference/](docs/reference/).
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements-dev.txt                    # + requirements-ml / -api / -dashboard for your track
 cp .env.example .env
-pytest -q                                              # contract tests
+pytest -q                                              # contract, bundle, metrics and registry tests
+```
+
+### Get a model bundle (the API and dashboard load one)
+```bash
+python scripts/make_mock_bundle.py                     # no data needed: artifacts/bundles/mock-cic, mock-luflow
+```
+Real bundles (`cic-v1`, `cic-holdout-botnet`, `luflow-v1`, `luflow-recal`) are built from the data, so they are not in git
+(`artifacts/` is gitignored). Ask the M2 owner for the folders, pull them from Azure ML (`docs/azure_setup.md`), or rebuild:
+```bash
+pip install -r requirements-ml.txt
+# 1. build the cleaned data, splits and working sets (10 GB download for 2018): follow data/README.md
+python -m ml.train.build_bundles                       # cic-v1       (~10 min on a laptop)
+python -m ml.train.build_bundles --holdout Botnet      # cic-holdout-botnet (the live-demo "never saw a botnet" model)
+python -m ml.train.luflow                              # luflow-v1, luflow-recal + month-by-month study
+python -m ml.train.make_experiments_doc                # regenerate docs/experiments.md
+```
+```python
+from nscore.bundle.loader import load_bundle
+from nscore.detection.engine import DetectionEngine
+bundle = load_bundle("local:artifacts/bundles/cic-v1")     # or "azureml:netsentinel-bundle@latest"
+det = DetectionEngine(bundle).detect(flows_df)             # verdict, p_attack, family, closest_family, confidence
 ```
 
 ## Repo map
@@ -43,12 +70,22 @@ pytest -q                                              # contract tests
 |---|---|---|
 | `nscore/contracts/` | **Shared schemas, policy, fixtures: the contract between all components** | M3 + all |
 | `nscore/features`, `nscore/drift` | train/serve-shared feature transform, PSI | M1 |
-| `nscore/detection`, `nscore/bundle` | fusion rule, bundle packaging/loading | M2 |
-| `ml/` | offline pipeline | M1, M2 |
+| `nscore/detection`, `nscore/bundle` | detection engine, fusion rule, SHAP explainer, bundle packaging/loading, Azure ML registry | M2 |
+| `ml/` | offline pipeline: data (M1), training, evaluation, experiments (M2) | M1, M2 |
+| `scripts/` | mock bundles, Azure registration, PDF export | M2 |
 | `api/` | FastAPI service | M3 (+ M5 brief) |
 | `dashboard/` | Streamlit SOC console | M4 |
 | `replay/` | demo traffic replay | M5 |
 | `infra/`, `.github/` | compose, Azure, CI | M3 |
 
 ## Status
-Foundation done: contracts, policy, fusion rule, fixtures, CI. Everything else is in [docs/04_tasks.md](docs/04_tasks.md) and the track issues.
+| Track | State |
+|---|---|
+| Foundation (contracts, policy, fixtures, CI) | done |
+| **M1** Data & Features | **done, merged** (#6): cleaned datasets, splits, feature specs, PSI, replay samples |
+| **M2** ML Modeling & MLOps | **done, merged** (#7): models, evaluation, SHAP, bundles, Azure ML registry code, model card. Real Azure registration still needs the team's subscription |
+| M3 Backend, M4 Console, M5 Security/GenAI/Demo | not started: see [docs/04_tasks.md](docs/04_tasks.md) and issues #3, #4, #5 |
+
+Headline numbers (test split, details and limits in the model card): 99.99% attack recall at a 0.1% benign false-alarm budget on known
+attacks; on attacks held out of training, floods/DoS tools 100%, DoS/DDoS families 79-85%, botnet 66% (99% at a 0.5% budget), while internal
+Nmap scans and LOIC-HTTP are missed.

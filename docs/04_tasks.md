@@ -43,7 +43,7 @@ Schedule I3 at least **2–3 days before Round 2**, not the night before.
 
 ## M1 — Data & Features
 
-> **Status: all M1 tasks done on branch `track/M1`** (reports in `docs/data_profile.md`, data section in `docs/model_card.md`, replay files in `replay/samples/`). The EDA notebook (M1-04) is the generated `docs/data_profile.md`, so every figure is reproducible by script.
+> **Status: all M1 tasks done and merged to `main` (PR #6)** (reports in `docs/data_profile.md`, data section in `docs/model_card.md`, replay files in `replay/samples/`). The EDA notebook (M1-04) is the generated `docs/data_profile.md`, so every figure is reproducible by script.
 
 - [ ] **M1-01** Download **corrected CSE-CIC-IDS2018** (distrinet-research.be/CNS2022; start this first, it's large) and **LUFlow** (github.com/ruzzzzz/LUFlow or Kaggle). **Confirm the 2018 files contain `Src IP`, `Dst IP`, `Timestamp`.** Record source URLs, checksums and row counts per label in `data/README.md`. *Deps: —*
 - [ ] **M1-02 ★** Write the canonical **`nscore/contracts/feature_spec.json`** (CIC schema): raw → snake_case names, dtypes, clip ranges, log1p flags, and the dropped columns with reasons (identifier or leakage). Run correlation pruning (\|ρ\|>0.95) on a 2018 train sample. Open a PR; M2 and M3 review it. *Deps: M1-01* → **unblocks M2, M3**
@@ -59,7 +59,7 @@ Schedule I3 at least **2–3 days before Round 2**, not the night before.
 
 ## M2 — ML Modeling & MLOps
 
-> **Status (branch `track/M2`):** M2-01 to M2-12 done; the final model card section (M2-13) is filled from the results. **The design changed after measurement**: a benign-only IsolationForest scored ~0 recall on CIC flows, so it is *optional* (LUFlow only) and novelty comes from the supervised forest's generalisation plus **family-head confidence** (ADR-1, `docs/experiments.md`). Tasks below keep their original wording; the notes in italics say what was actually done. Azure steps (M2-12) are implemented and tested against a fake client; **they still need your Azure subscription to run for real**.
+> **Status: all M2 tasks done and merged to `main` (PR #7).** **The design changed after measurement**: a benign-only IsolationForest scored ~0 recall on CIC flows, so it is *optional* (LUFlow only) and novelty comes from the supervised forest's generalisation plus **family-head confidence** (ADR-1, `docs/experiments.md`). Tasks below keep their original wording; the notes in italics say what was actually done. Azure steps (M2-12) are implemented and tested against a fake client; **they still need your Azure subscription to run for real**.
 
 - [x] **M2-01 ★** `scripts/make_mock_bundle.py`: a tiny bundle (RF + IF trained on random data with the feature names from `feature_spec.json`, or the fixture feature names if the spec isn't merged yet), with a valid `manifest.json` and sha256s. *Deps: —* → **unblocks M3-03**
 - [x] **M2-02** `ml/evaluate/metrics.py`: an evaluation harness producing an `EvaluationReport` (per-class P/R/F1/**FPR**/AUC, macro-F1, binary ROC/PR-AUC, confusion matrix PNG + JSON). Then a **baseline `rf_binary`** on the P1 split. *Deps: M1-05, M1-06*
