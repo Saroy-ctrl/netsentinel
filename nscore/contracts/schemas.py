@@ -16,7 +16,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "2.0.0"
+CONTRACT_VERSION = "2.1.0"
+# 2.1.0: ScoreResult.closest_family (novel anomalies report the nearest known family); thresholds gain tau_family
 # 2.0.0: risk engine (risk_score/risk_level/severity replace priority/priority_band),
 #        Infiltration + Malicious families, ModelInfo.feature_schema/family_head, LUFlow protocols
 # 1.1.0: EvaluationReport.external
@@ -127,6 +128,8 @@ class ScoreResult(_Model):
     )
     attack_family: AttackFamily
     family_confidence: float | None = Field(default=None, ge=0, le=1)
+    closest_family: AttackFamily | None = Field(
+        default=None, description="family head's best guess; set for novel anomalies (attack_family is Unknown)")
     top_features: list[FeatureContribution] = Field(default_factory=list, max_length=10)
     incident_id: str | None = None
     model_version: str

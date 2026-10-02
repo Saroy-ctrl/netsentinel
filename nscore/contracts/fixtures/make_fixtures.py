@@ -111,7 +111,8 @@ def build() -> dict[str, object]:
         ground_truth="Botnet",
     )
     score = ScoreResult(flow_id="F-0", verdict=Verdict.NOVEL_ANOMALY, p_attack=0.31, anomaly_percentile=99.8,
-                        attack_family=AttackFamily.UNKNOWN, family_confidence=None, top_features=FEATS,
+                        attack_family=AttackFamily.UNKNOWN, family_confidence=0.55, closest_family=AttackFamily.DDOS,
+                        top_features=FEATS,
                         incident_id=top.incident_id, model_version=MODEL, latency_ms=8.4)
     fams = [AttackFamily.BENIGN, AttackFamily.DOS, AttackFamily.DDOS, AttackFamily.BRUTE_FORCE,
             AttackFamily.WEB_ATTACK, AttackFamily.INFILTRATION, AttackFamily.BOTNET]
@@ -139,7 +140,7 @@ def build() -> dict[str, object]:
     model = ModelInfo(model_version=MODEL, bundle_ref="local:artifacts/fixture", registry="local",
                       trained_at=T0, dataset="CSE-CIC-IDS2018 (corrected, Liu/Engelen et al. 2022)",
                       split_strategy=evaluation.split_strategy, feature_schema="cic", family_head=True,
-                      feature_count=52, thresholds={"tau_binary": 0.62, "tau_anomaly": 99.5},
+                      feature_count=52, thresholds={"tau_binary": 0.62, "tau_family": 0.9},
                       operating_fpr_target=0.01,
                       metrics_summary={"macro_f1": 0.9, "binary_roc_auc": 0.98, "benign_fpr": 0.012})
     drift = DriftReport(computed_at=T0, window_size=2000, status=DriftStatus.WATCH, max_psi=0.18,

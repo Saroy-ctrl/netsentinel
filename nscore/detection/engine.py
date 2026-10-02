@@ -5,11 +5,12 @@ API (api/), so offline metrics and live behaviour cannot drift apart.
     det = eng.detect(df_or_records)          # vectorised; no SHAP here (explanations: nscore.detection.explain)
 
 Per flow:   p  = rf_binary P(attack)
-            a  = IsolationForest anomaly percentile among BENIGN validation flows (0-100, 100 = most anomalous)
-            v  = fuse(p, a, tau_binary, tau_anomaly)               KNOWN_ATTACK | NOVEL_ANOMALY | BENIGN
-KNOWN_ATTACK -> family from rf_multiclass (+ probabilities, used for expected severity); binary-only bundles
-(LUFlow) answer `Malicious`. NOVEL_ANOMALY -> family `Unknown`. `confidence` is what the risk engine multiplies:
-p for known attacks, novel_confidence(a) for novel anomalies.
+            if p >= tau_binary:  family head -> probabilities; confidence = max prob
+                                 confidence < tau_family -> NOVEL_ANOMALY (family UNKNOWN, `closest_family` = argmax)
+                                 else KNOWN_ATTACK (family named)
+            else:                optional IsolationForest percentile >= tau_anomaly -> NOVEL_ANOMALY, else BENIGN
+Binary-only bundles (LUFlow) answer `Malicious` and use the optional anomaly path for novelty. `confidence` is what the
+risk engine multiplies: p for flagged attacks, novel_confidence(a) for anomaly-path novelties, 0 for benign.
 """
 
 from __future__ import annotations
@@ -20,15 +21,16 @@ import numpy as np
 import pandas as pd
 
 from nscore.contracts.schemas import AttackFamily, Verdict
-from nscore.detection.fusion import fuse, novel_confidence
+from nscore.detection.fusion import ANOMALY_DISABLED, fuse, novel_confidence
 
 
 @dataclass
 class Detections:
     verdict: list[Verdict]
     p_attack: np.ndarray
-    anomaly_percentile: np.ndarray
-    family: list[AttackFamily]
+    anomaly_percentile: np.ndarray  # 0.0 when the bundle has no anomaly detector
+    family: list[AttackFamily]  # UNKNOWN for novel anomalies
+    closest_family: list[AttackFamily | None]  # argmax of the family head for flagged flows (also for novel ones)
     family_confidence: np.ndarray  # NaN where there is no family decision
     family_probs: list[dict[AttackFamily, float] | None]
     confidence: np.ndarray  # risk-engine confidence (0 for benign)
@@ -41,9 +43,13 @@ class Detections:
 class DetectionEngine:
     def __init__(self, bundle) -> None:
         self.bundle = bundle
-        self.tau_binary = float(bundle.thresholds["tau_binary"])
-        self.tau_anomaly = float(bundle.thresholds["tau_anomaly"])
-        self._sorted_scores = np.sort(np.asarray(bundle.benign_val_scores, dtype=np.float64))
+        t = bundle.thresholds
+        self.tau_binary = float(t["tau_binary"])
+        self.tau_family = float(t.get("tau_family", 0.0))
+        self.tau_anomaly = float(t.get("tau_anomaly", ANOMALY_DISABLED))
+        self.has_anomaly = bundle.iforest is not None
+        self._sorted_scores = (np.sort(np.asarray(bundle.benign_val_scores, dtype=np.float64))
+                               if self.has_anomaly else None)
 
     # --------------------------------------------------------------- scoring pieces (also used by evaluation)
     def transform(self, flows) -> np.ndarray:
@@ -59,44 +65,42 @@ class DetectionEngine:
         classes = list(self.bundle.rf_binary.classes_)
         return proba[:, classes.index(1)] if 1 in classes else np.zeros(len(X))
 
-    def anomaly_score(self, X: np.ndarray) -> np.ndarray:
-        """Higher = more anomalous (negated IsolationForest score_samples)."""
-        return -self.bundle.iforest.score_samples(X)
-
     def anomaly_percentile(self, X: np.ndarray) -> np.ndarray:
-        s = self.anomaly_score(X)
+        """Higher = more anomalous, as a percentile of the benign validation scores. 0.0 without an anomaly detector."""
+        if not self.has_anomaly:
+            return np.zeros(len(X))
+        s = -self.bundle.iforest.score_samples(X)
         return 100.0 * np.searchsorted(self._sorted_scores, s, side="right") / len(self._sorted_scores)
 
     # --------------------------------------------------------------- full decision
-    def decide(self, p: np.ndarray, pct: np.ndarray) -> list[Verdict]:
-        return [fuse(float(a), float(b), self.tau_binary, self.tau_anomaly) for a, b in zip(p, pct, strict=True)]
-
     def detect(self, flows) -> Detections:
         X = self.transform(flows)
         p, pct = self.p_attack(X), self.anomaly_percentile(X)
-        verdict = self.decide(p, pct)
         n = len(X)
         family = [AttackFamily.BENIGN] * n
+        closest: list[AttackFamily | None] = [None] * n
         fconf = np.full(n, np.nan)
         fprobs: list[dict[AttackFamily, float] | None] = [None] * n
         conf = np.zeros(n)
+        verdict = [Verdict.BENIGN] * n
 
-        known = np.array([v is Verdict.KNOWN_ATTACK for v in verdict], dtype=bool)
-        novel = np.array([v is Verdict.NOVEL_ANOMALY for v in verdict], dtype=bool)
-        if known.any():
-            conf[known] = p[known]
-            multi = self.bundle.rf_multiclass
-            if multi is None:  # binary-only bundle
-                for i in np.flatnonzero(known):
-                    family[i] = AttackFamily.MALICIOUS
-            else:
-                proba = multi.predict_proba(X[known])
-                classes = [AttackFamily(str(c)) for c in multi.classes_]
-                for row, i in zip(proba, np.flatnonzero(known), strict=True):
-                    probs = {c: float(q) for c, q in zip(classes, row, strict=True)}
-                    best = max(probs, key=probs.get)
-                    family[i], fconf[i], fprobs[i] = best, probs[best], probs
-        for i in np.flatnonzero(novel):
-            family[i] = AttackFamily.UNKNOWN
-            conf[i] = novel_confidence(float(pct[i]), self.tau_anomaly)
-        return Detections(verdict, p, pct, family, fconf, fprobs, conf, X)
+        flagged = np.flatnonzero(p >= self.tau_binary)
+        multi = self.bundle.rf_multiclass
+        if len(flagged) and multi is not None:
+            proba = multi.predict_proba(X[flagged])
+            classes = [AttackFamily(str(c)) for c in multi.classes_]
+            for row, i in zip(proba, flagged, strict=True):
+                probs = {c: float(q) for c, q in zip(classes, row, strict=True)}
+                best = max(probs, key=probs.get)
+                closest[i], fconf[i], fprobs[i] = best, probs[best], probs
+        for i in range(n):
+            v = fuse(float(p[i]), float(pct[i]), self.tau_binary, self.tau_anomaly,
+                     None if np.isnan(fconf[i]) else float(fconf[i]), self.tau_family)
+            verdict[i] = v
+            if v is Verdict.KNOWN_ATTACK:
+                conf[i] = p[i]
+                family[i] = closest[i] if closest[i] is not None else AttackFamily.MALICIOUS
+            elif v is Verdict.NOVEL_ANOMALY:
+                family[i] = AttackFamily.UNKNOWN
+                conf[i] = p[i] if p[i] >= self.tau_binary else novel_confidence(float(pct[i]), self.tau_anomaly)
+        return Detections(verdict, p, pct, family, closest, fconf, fprobs, conf, X)

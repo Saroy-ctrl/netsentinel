@@ -62,8 +62,17 @@ def build(schema: str, out_root: Path, seed: int = 0) -> Path:
         atk = y == 1
         multi = RandomForestClassifier(n_estimators=40, max_depth=10, random_state=seed).fit(X[atk], family[atk])
         assert all(c in {f.value for f in AttackFamily} for c in multi.classes_)
-    iso = IsolationForest(n_estimators=100, max_samples=256, random_state=seed, n_jobs=-1).fit(X[y == 0])
-    benign_scores = -iso.score_samples(X[y == 0])
+    # CIC bundles have no IsolationForest (it scored ~0 recall there); the binary-only LUFlow bundle keeps one
+    iso = benign_scores = None
+    if not cfg["families"]:
+        iso = IsolationForest(n_estimators=100, max_samples=256, random_state=seed, n_jobs=-1).fit(X[y == 0])
+        benign_scores = -iso.score_samples(X[y == 0])
+    tau_family = 0.0
+    if cfg["families"]:  # mock rule: the 25% least-confident attack flows count as "unfamiliar"
+        tau_family = float(np.quantile(multi.predict_proba(X[y == 1]).max(axis=1), 0.25))
+    thresholds = {"tau_binary": 0.5, "tau_family": tau_family, "operating_fpr": 0.001}
+    if iso is not None:
+        thresholds["tau_anomaly"] = 99.0
 
     baseline = json.loads((CONTRACTS / cfg["baseline"]).read_text(encoding="utf-8"))
     report = json.loads((CONTRACTS / "fixtures" / "evaluation_report.json").read_text(encoding="utf-8"))
@@ -72,7 +81,7 @@ def build(schema: str, out_root: Path, seed: int = 0) -> Path:
     build_bundle(
         out, version=f"mock-{schema}-0", spec_path=spec_path, transformer=tr, rf_binary=rf, iforest=iso,
         rf_multiclass=multi, benign_val_scores=benign_scores,
-        thresholds={"tau_binary": 0.5, "tau_anomaly": 99.0, "operating_fpr": 0.01},
+        thresholds=thresholds,
         drift_reference=build_reference(X, tr.feature_names), baseline_stats=baseline,
         dataset="MOCK (synthetic)", split_strategy="none (synthetic)", metrics_summary={"mock": 1.0},
         evaluation_report=report, tags={"mock": "true"}, overwrite=True)

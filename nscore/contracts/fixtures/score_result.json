@@ -4,7 +4,8 @@
   "p_attack": 0.31,
   "anomaly_percentile": 99.8,
   "attack_family": "Unknown",
-  "family_confidence": null,
+  "family_confidence": 0.55,
+  "closest_family": "DDoS",
   "top_features": [
     {
       "feature": "flow_iat_mean",

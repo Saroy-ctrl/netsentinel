@@ -38,9 +38,9 @@ class Bundle:
     spec: FeatureSpec
     transformer: object
     rf_binary: object
-    iforest: object
     rf_multiclass: object | None
-    benign_val_scores: np.ndarray
+    iforest: object | None
+    benign_val_scores: np.ndarray | None
     thresholds: dict[str, float]
     label_map: dict
     drift_reference: dict
@@ -68,7 +68,7 @@ class Bundle:
             trained_at=self.manifest.created_at, dataset=self.manifest.dataset,
             split_strategy=self.manifest.split_strategy, feature_schema=self.feature_schema,  # type: ignore[arg-type]
             family_head=self.family_head, feature_count=len(self.spec.names),
-            thresholds={"tau_binary": t["tau_binary"], "tau_anomaly": t["tau_anomaly"]},
+            thresholds={k: v for k, v in t.items() if k != "operating_fpr"},
             operating_fpr_target=t["operating_fpr"], metrics_summary=self.manifest.metrics_summary,
         )
 
@@ -108,12 +108,13 @@ def load_local(path: str | Path, ref: str | None = None, registry: str = "local"
     transformer = joblib.load(path / "transformer.joblib")
     if transformer.spec.sha256 != spec.sha256:
         raise BundleIntegrityError("transformer was fitted with a different spec than feature_spec.json")
-    multi = path / "rf_multiclass.joblib"
+    multi, iso = path / "rf_multiclass.joblib", path / "iforest.joblib"
     return Bundle(
         path=path, ref=ref or f"local:{path.as_posix()}", manifest=manifest, spec=spec, transformer=transformer,
-        rf_binary=joblib.load(path / "rf_binary.joblib"), iforest=joblib.load(path / "iforest.joblib"),
+        rf_binary=joblib.load(path / "rf_binary.joblib"),
         rf_multiclass=joblib.load(multi) if multi.exists() else None,
-        benign_val_scores=np.load(path / "iforest_benign_val_scores.npy"),
+        iforest=joblib.load(iso) if iso.exists() else None,
+        benign_val_scores=np.load(path / "iforest_benign_val_scores.npy") if iso.exists() else None,
         thresholds=_read_json(path / "thresholds.json"), label_map=_read_json(path / "label_map.json"),
         drift_reference=_read_json(path / "drift_reference.json"),
         baseline_stats=_read_json(path / "baseline_stats.json"),

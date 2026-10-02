@@ -27,9 +27,16 @@ def test_fixtures_validate(name, model):
 
 
 def test_fusion_regions():
+    # anomaly path (binary-only bundles): benign-only detector flags what the classifier does not
     assert fuse(0.9, 10, 0.6, 99.5) is s.Verdict.KNOWN_ATTACK
     assert fuse(0.2, 99.9, 0.6, 99.5) is s.Verdict.NOVEL_ANOMALY
     assert fuse(0.2, 50, 0.6, 99.5) is s.Verdict.BENIGN
+    # family-confidence path (CIC bundles): attack flagged, but the family head is unsure -> unfamiliar attack
+    assert fuse(0.9, 0, 0.6, family_conf=0.99, tau_family=0.9) is s.Verdict.KNOWN_ATTACK
+    assert fuse(0.9, 0, 0.6, family_conf=0.55, tau_family=0.9) is s.Verdict.NOVEL_ANOMALY
+    # an unsure family head never turns a benign flow into an alert
+    assert fuse(0.2, 0, 0.6, family_conf=0.10, tau_family=0.9) is s.Verdict.BENIGN
+    assert fuse(0.2, 100.0, 0.6) is s.Verdict.BENIGN  # anomaly path disabled by default
 
 
 def test_novel_confidence_range():
