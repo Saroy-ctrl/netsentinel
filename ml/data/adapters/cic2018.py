@@ -131,7 +131,7 @@ class Deduper:
         dup = pd.Series(h).duplicated().to_numpy()
         if len(self.seen):
             pos = np.minimum(np.searchsorted(self.seen, h), len(self.seen) - 1)
-            dup |= self.seen[pos] == h
+            dup = dup | (self.seen[pos] == h)  # not |=: pandas >= 3 hands back read-only arrays
         keep = ~dup
         self.seen = np.concatenate([self.seen, np.unique(h[keep])])
         self.seen.sort(kind="stable")  # two sorted runs -> near-linear merge
