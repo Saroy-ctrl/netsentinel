@@ -27,7 +27,22 @@ Keep everything on a drive with space (D:); the 2018 zip expands to much more th
 | Zip | 10,426,851,729 bytes, last modified 2023-04-03 · sha256 in `raw/cic2018/MANIFEST.json` |
 | Labels | "Attempted" flows → relabel **BENIGN** (authors' advice: rows where `Attempted Category != -1`). Never a separate class. |
 
-Row counts per day and label, and the column check (`Src IP`, `Dst IP`, `Timestamp` present?): _pending, filled in after the download finishes._
+**Zip contents** (read from the archive's central directory): 10 day files, **36.0 GB uncompressed**. Don't unzip; stream each CSV out of the zip in chunks (M1-03).
+
+| File | Uncompressed | | File | Uncompressed |
+|---|---:|---|---|---:|
+| Wednesday-14-02-2018.csv | 3.26 GB | | Thursday-22-02-2018.csv | 3.47 GB |
+| Thursday-15-02-2018.csv | 2.99 GB | | Friday-23-02-2018.csv | 3.41 GB |
+| Friday-16-02-2018.csv | 4.21 GB | | Wednesday-28-02-2018.csv | 3.81 GB |
+| Tuesday-20-02-2018.csv | 3.43 GB | | Thursday-01-03-2018.csv | 3.81 GB |
+| Wednesday-21-02-2018.csv | 3.95 GB | | Friday-02-03-2018.csv | 3.69 GB |
+
+**Column check: PASSED.** 91 columns, including `Flow ID`, `Src IP`, `Src Port`, `Dst IP`, `Dst Port`, `Protocol`,
+`Timestamp` (e.g. `2018-02-14 12:30:07.258263`, µs precision), `Label` and `Attempted Category`. Also present vs the
+original release: `id`, `Fwd/Bwd RST Flags`, `ICMP Code`, `ICMP Type`, `Total TCP Flow Time` (fixed-CICFlowMeter features).
+Roughly 600 bytes per row → expect on the order of **60M flows** in total (exact counts below once streamed).
+
+Row counts per day and label: _filled in by M1-01's counting pass after the download finishes._
 
 ## LUFlow (real-traffic showcase)
 
