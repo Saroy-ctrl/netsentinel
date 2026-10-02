@@ -3,8 +3,10 @@
   "bundle_ref": "local:artifacts/fixture",
   "registry": "local",
   "trained_at": "2026-10-02T09:30:00Z",
-  "dataset": "CICIDS2017 (corrected, Engelen et al. 2021)",
-  "split_strategy": "time-blocked per (day,label) 70/15/15",
+  "dataset": "CSE-CIC-IDS2018 (corrected, Liu/Engelen et al. 2022)",
+  "split_strategy": "CSE-CIC-IDS2018: time-blocked per (day,label) 70/15/15, 60 s purge",
+  "feature_schema": "cic",
+  "family_head": true,
   "feature_count": 52,
   "thresholds": {
     "tau_binary": 0.62,
@@ -16,5 +18,5 @@
     "binary_roc_auc": 0.98,
     "benign_fpr": 0.012
   },
-  "contract_version": "1.1.0"
+  "contract_version": "2.0.0"
 }

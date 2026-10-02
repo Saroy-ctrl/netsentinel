@@ -26,7 +26,7 @@ def fuse(p_attack: float, anomaly_percentile: float, tau_binary: float, tau_anom
 
 
 def novel_confidence(anomaly_percentile: float, tau_anomaly: float) -> float:
-    """Map anomaly percentile in [tau, 100] onto a [0.5, 1.0] confidence for priority/hedging."""
+    """Map anomaly percentile in [tau, 100] onto a [0.5, 1.0] confidence for the risk engine / brief hedging."""
     if anomaly_percentile < tau_anomaly or tau_anomaly >= 100:
         return 0.0
     return 0.5 + 0.5 * (anomaly_percentile - tau_anomaly) / (100 - tau_anomaly)

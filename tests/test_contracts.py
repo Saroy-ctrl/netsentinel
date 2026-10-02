@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from nscore.contracts import schemas as s
-from nscore.contracts.policy import confidence_band, priority_band, priority_score
+from nscore.contracts.policy import burst_factor, confidence_band, expected_severity, risk_level, risk_score
 from nscore.detection.fusion import fuse, novel_confidence
 
 FIX = Path(__file__).resolve().parents[1] / "nscore" / "contracts" / "fixtures"
@@ -38,14 +38,29 @@ def test_novel_confidence_range():
     assert novel_confidence(100.0, 99.5) == 1.0
 
 
-def test_priority_monotonic_and_bounded():
-    f, v = s.AttackFamily.BOTNET, s.Verdict.KNOWN_ATTACK
-    assert priority_score(f, v, 0.5, 1) < priority_score(f, v, 0.9, 1) < priority_score(f, v, 0.9, 500)
-    assert priority_score(f, v, 1.0, 10**6) == 90
-    assert 0 <= priority_score(s.AttackFamily.UNKNOWN, s.Verdict.NOVEL_ANOMALY, 1.0, 10**6) <= 100
-    assert priority_score(s.AttackFamily.BENIGN, s.Verdict.BENIGN, 1.0, 10) == 0
-    assert priority_band(85) == "P1" and priority_band(10) == "P4"
+def test_risk_matches_team_worked_examples():
+    # docs/reference/NetSentinel_Risk_Scoring_Pipeline.pdf, single flow (burst = 1.0)
+    k = s.Verdict.KNOWN_ATTACK
+    assert risk_score(k, 0.88, expected_severity(s.AttackFamily.BRUTE_FORCE)) == 62
+    assert risk_score(k, 0.81, expected_severity(s.AttackFamily.INFILTRATION)) == 81
+    assert risk_score(k, 0.95, expected_severity(s.AttackFamily.PORTSCAN)) == 28
+    assert [risk_level(x) for x in (62, 81, 28)] == ["MEDIUM", "HIGH", "LOW"]
+
+
+def test_risk_burst_and_bounds():
+    k = s.Verdict.KNOWN_ATTACK
+    one = risk_score(k, 0.9, 0.8, 1)
+    assert one < risk_score(k, 0.9, 0.8, 100) < risk_score(k, 0.9, 0.8, 1000) == risk_score(k, 0.9, 0.8, 10**6)
+    assert burst_factor(1) == 1.0 and abs(burst_factor(1000) - 1.15) < 1e-9
+    assert risk_score(s.Verdict.NOVEL_ANOMALY, 1.0, 1.0, 10**6) == 100
+    assert risk_score(s.Verdict.BENIGN, 1.0, 1.0, 10) == 0
     assert confidence_band(0.5) == "low"
+
+
+def test_expected_severity_weights_by_probability():
+    f = s.AttackFamily
+    assert expected_severity(f.WEB_ATTACK, {f.WEB_ATTACK: 0.5, f.INFILTRATION: 0.5}) == 0.8
+    assert expected_severity(f.MALICIOUS) == 0.7
 
 
 def test_flow_batch_limits():

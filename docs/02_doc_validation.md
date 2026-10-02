@@ -29,7 +29,7 @@ Both target **PS #26**. The final framework in [03_architecture.md](03_architect
 | A6 | "First-pass Random Forest baseline trained…" | 🟠 | Keep this only if it's actually true when we submit. |
 | A7 | The tech stack lists "Streamlit / React" | 🟡 | Pick Streamlit. Add React only after the demo works end to end. |
 | A8 | One alert per flow would *add* to the alert-fatigue problem the pitch complains about. | 🟠 | Group flows into incidents (correlation by source/destination/family in a time window). |
-| A9 | No mention that CICIDS2017 has known label errors. Single lab dataset only. | 🟠 | "Trained on corrected CIC-IDS2017, tested on an unseen network (corrected CSE-CIC-IDS2018) and on real traffic (LUFlow)" (ADR-8). It earns credibility. |
+| A9 | No mention that CICIDS2017 has known label errors. Single lab dataset only. | 🟠 | "Trained and tested on corrected CSE-CIC-IDS2018, shown working on real traffic (LUFlow)" (ADR-8). It earns credibility. |
 | A10 | Template placeholders (team name, IDs, members) are still unfilled. | 🟡 | Fill them in. |
 
 ---

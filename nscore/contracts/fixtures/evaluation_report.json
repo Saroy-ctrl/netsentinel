@@ -1,15 +1,14 @@
 {
   "model_version": "nsb-0.0.0-fixture",
-  "split_strategy": "time-blocked per (day,label) 70/15/15",
+  "split_strategy": "CSE-CIC-IDS2018: time-blocked per (day,label) 70/15/15, 60 s purge",
   "labels": [
     "BENIGN",
     "DoS",
     "DDoS",
-    "PortScan",
     "BruteForce",
     "WebAttack",
-    "Botnet",
-    "Rare"
+    "Infiltration",
+    "Botnet"
   ],
   "per_class": [
     {
@@ -40,15 +39,6 @@
       "roc_auc": 0.97
     },
     {
-      "family": "PortScan",
-      "precision": 0.9,
-      "recall": 0.9,
-      "f1": 0.9,
-      "fpr": 0.01,
-      "support": 1000,
-      "roc_auc": 0.97
-    },
-    {
       "family": "BruteForce",
       "precision": 0.9,
       "recall": 0.9,
@@ -67,7 +57,7 @@
       "roc_auc": 0.97
     },
     {
-      "family": "Botnet",
+      "family": "Infiltration",
       "precision": 0.9,
       "recall": 0.9,
       "f1": 0.9,
@@ -76,7 +66,7 @@
       "roc_auc": 0.97
     },
     {
-      "family": "Rare",
+      "family": "Botnet",
       "precision": 0.9,
       "recall": 0.9,
       "f1": 0.9,
@@ -93,7 +83,6 @@
       5,
       5,
       5,
-      5,
       5
     ],
     [
@@ -103,21 +92,9 @@
       5,
       5,
       5,
-      5,
       5
     ],
     [
-      5,
-      5,
-      1000,
-      5,
-      5,
-      5,
-      5,
-      5
-    ],
-    [
-      5,
       5,
       5,
       1000,
@@ -130,14 +107,12 @@
       5,
       5,
       5,
-      5,
       1000,
       5,
       5,
       5
     ],
     [
-      5,
       5,
       5,
       5,
@@ -152,12 +127,10 @@
       5,
       5,
       5,
-      5,
       1000,
       5
     ],
     [
-      5,
       5,
       5,
       5,
@@ -185,12 +158,6 @@
       "benign_fpr": 0.015
     },
     {
-      "held_out_family": "PortScan",
-      "rf_only_recall": 0.3,
-      "fusion_recall": 0.7,
-      "benign_fpr": 0.015
-    },
-    {
       "held_out_family": "BruteForce",
       "rf_only_recall": 0.3,
       "fusion_recall": 0.7,
@@ -198,6 +165,12 @@
     },
     {
       "held_out_family": "WebAttack",
+      "rf_only_recall": 0.3,
+      "fusion_recall": 0.7,
+      "benign_fpr": 0.015
+    },
+    {
+      "held_out_family": "Infiltration",
       "rf_only_recall": 0.3,
       "fusion_recall": 0.7,
       "benign_fpr": 0.015
@@ -212,36 +185,36 @@
   "external": [
     {
       "dataset": "CSE-CIC-IDS2018 (corrected)",
-      "protocol": "cross_network",
+      "protocol": "tool_holdout",
       "period": null,
-      "binary_recall": 0.55,
-      "benign_fpr": 0.06,
-      "roc_auc": 0.81,
-      "novel_recall": 0.4,
-      "max_psi": 0.41,
-      "notes": "2017 model deployed unchanged on a new network"
-    },
-    {
-      "dataset": "CSE-CIC-IDS2018 (corrected)",
-      "protocol": "cross_network_recalibrated",
-      "period": null,
-      "binary_recall": 0.6,
-      "benign_fpr": 0.015,
-      "roc_auc": 0.84,
-      "novel_recall": 0.62,
-      "max_psi": 0.08,
-      "notes": "IsolationForest + thresholds refit on a label-free benign baseline window"
+      "binary_recall": 0.93,
+      "benign_fpr": 0.012,
+      "roc_auc": null,
+      "novel_recall": 0.93,
+      "max_psi": null,
+      "notes": "DDoS-HOIC removed from training"
     },
     {
       "dataset": "LUFlow",
       "protocol": "real_world_temporal",
-      "period": "month+1",
-      "binary_recall": 0.9,
-      "benign_fpr": 0.02,
-      "roc_auc": null,
-      "novel_recall": 0.5,
-      "max_psi": 0.12,
-      "notes": null
+      "period": "month+3",
+      "binary_recall": 0.81,
+      "benign_fpr": 0.04,
+      "roc_auc": 0.9,
+      "novel_recall": 0.45,
+      "max_psi": 0.31,
+      "notes": "trained on the first two months, tested three months later"
+    },
+    {
+      "dataset": "LUFlow",
+      "protocol": "real_world_recalibrated",
+      "period": "month+3",
+      "binary_recall": 0.84,
+      "benign_fpr": 0.015,
+      "roc_auc": 0.91,
+      "novel_recall": 0.52,
+      "max_psi": 0.07,
+      "notes": "IsolationForest + thresholds refit on a label-free recent benign window"
     }
   ],
   "limitations": [

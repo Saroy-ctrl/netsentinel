@@ -14,9 +14,9 @@ CICFlowMeter flows ──► RF (known attack families) ─┐
 
 ## Why this design wins
 - **Actually catches novel attacks.** A benign-only Isolation Forest sits next to the supervised RF. We prove it with a *Leave-One-Attack-family-Out* evaluation (the model never saw that family during training).
-- **Tested beyond one lab.** Trained on corrected CIC-IDS2017, tested on a *different network* (corrected CSE-CIC-IDS2018, including attack tools never seen in training), and checked against *real* honeypot traffic (LUFlow).
+- **Tested beyond the lab.** Trained and tested on corrected CSE-CIC-IDS2018 (a 420-machine network, 10 days, many attack tools), then shown working live on *real* honeypot traffic (LUFlow), where drift is measured, not assumed.
 - **Honest numbers.** Audited labels, a time-blocked split, per-class P/R/F1/**FPR**/AUC, thresholds set by an explicit false-positive budget, and a model card with limitations.
-- **Reduces alert fatigue instead of adding to it.** Flows are grouped into incidents, ranked P1–P4 and mapped to MITRE ATT&CK.
+- **Reduces alert fatigue instead of adding to it.** Flows are grouped into incidents, risk-scored (confidence × severity × burst → HIGH / MEDIUM / LOW) and mapped to MITRE ATT&CK.
 - **Human in the loop.** Acknowledge / escalate / dismiss-as-FP, with an audit trail and live analyst-confirmed precision.
 - **Drift-aware.** Live PSI monitor with a retraining trigger.
 - **Real Azure.** Azure ML model registry (with a local cache fallback) and Azure OpenAI incident briefs (with a template fallback).

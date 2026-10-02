@@ -16,7 +16,10 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.1.0"  # 1.1.0: EvaluationReport.external (cross-network + real-world results)
+CONTRACT_VERSION = "2.0.0"
+# 2.0.0: risk engine (risk_score/risk_level/severity replace priority/priority_band),
+#        Infiltration + Malicious families, ModelInfo.feature_schema/family_head, LUFlow protocols
+# 1.1.0: EvaluationReport.external
 
 
 class _Model(BaseModel):
@@ -36,11 +39,13 @@ class AttackFamily(StrEnum):
     BENIGN = "BENIGN"
     DOS = "DoS"
     DDOS = "DDoS"
-    PORTSCAN = "PortScan"
     BRUTE_FORCE = "BruteForce"
     WEB_ATTACK = "WebAttack"
+    INFILTRATION = "Infiltration"
     BOTNET = "Botnet"
-    RARE = "Rare"  # Heartbleed / Infiltration / SQLi etc. merged: too few samples for their own class
+    PORTSCAN = "PortScan"  # not a standalone class in CSE-CIC-IDS2018; kept for live-capture stretch goal
+    RARE = "Rare"  # any family with < 1,000 clean training flows is merged here (docs/03 #3.1)
+    MALICIOUS = "Malicious"  # binary-only bundles (LUFlow): attack, but no family head
     UNKNOWN = "Unknown"  # used only for NOVEL_ANOMALY verdicts
 
 
@@ -67,7 +72,7 @@ class DriftStatus(StrEnum):
     ALERT = "alert"  # PSI >= 0.25 -> "consider retraining"
 
 
-PriorityBand = Literal["P1", "P2", "P3", "P4"]
+RiskLevel = Literal["HIGH", "MEDIUM", "LOW"]
 ConfidenceBand = Literal["high", "medium", "low"]
 
 
@@ -168,8 +173,9 @@ class IncidentSummary(_Model):
     attack_family: AttackFamily
     mitre_technique_id: str | None
     mitre_technique_name: str | None
-    priority: int = Field(ge=0, le=100)
-    priority_band: PriorityBand
+    risk_score: int = Field(ge=0, le=100, description="policy.risk_score: confidence x severity x burst (+novelty)")
+    risk_level: RiskLevel
+    severity: float = Field(ge=0, le=1, description="expected severity of the incident's flows (policy.SEVERITY)")
     max_confidence: float = Field(ge=0, le=1)
     flow_count: int = Field(ge=1)
     src_ip: str
@@ -217,18 +223,18 @@ class LoaoResult(_Model):
 
 
 class ExternalEvalResult(_Model):
-    """Evaluation on data from a DIFFERENT network / period than training (docs/03 #3.2 P3, P4)."""
+    """Evaluation outside the main 2018 test split: LUFlow real traffic, tool holdout (docs/03 #3.2)."""
 
-    dataset: str = Field(description="e.g. 'CSE-CIC-IDS2018 (corrected)' or 'LUFlow 2021-03'")
-    protocol: Literal["cross_network", "cross_network_recalibrated", "real_world_temporal"]
+    dataset: str = Field(description="e.g. 'LUFlow'")
+    protocol: Literal["real_world_temporal", "real_world_recalibrated", "tool_holdout"]
     period: str | None = Field(default=None, description="time slice for temporal studies, e.g. '2021-03'")
     binary_recall: float
     benign_fpr: float
     roc_auc: float | None = None
     novel_recall: float | None = Field(
         default=None,
-        description="recall on attack variants absent from training (e.g. DDoS-HOIC), "
-        "or share of LUFlow 'outlier' flows flagged as novel",
+        description="share of LUFlow 'outlier' flows flagged as novel, "
+        "or recall on a tool held out of training (e.g. DDoS-HOIC)",
     )
     max_psi: float | None = Field(default=None, description="largest feature PSI vs training reference")
     notes: str | None = None
@@ -256,6 +262,8 @@ class ModelInfo(_Model):
     trained_at: datetime
     dataset: str
     split_strategy: str
+    feature_schema: Literal["cic", "luflow"] = Field(description="which feature_spec the bundle expects")
+    family_head: bool = Field(description="False for binary-only bundles (LUFlow): no attack-type model")
     feature_count: int
     thresholds: dict[str, float]
     operating_fpr_target: float
@@ -302,7 +310,7 @@ class LiveMetrics(_Model):
     latency_ms_p50: float
     latency_ms_p95: float
     incidents_open: int
-    incidents_by_band: dict[str, int]
+    incidents_by_level: dict[str, int]
     analyst_confirmed_precision: float | None = Field(
         default=None, description="confirmed / (confirmed + dismissed_fp) over reviewed incidents"
     )

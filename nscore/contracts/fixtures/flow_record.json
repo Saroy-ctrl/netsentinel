@@ -2,10 +2,10 @@
   "meta": {
     "flow_id": "F-0",
     "observed_at": "2026-10-02T09:30:00Z",
-    "src_ip": "172.16.0.1",
-    "dst_ip": "192.168.10.50",
+    "src_ip": "18.219.211.138",
+    "dst_ip": "172.31.69.25",
     "src_port": 51234,
-    "dst_port": 443,
+    "dst_port": 8080,
     "protocol": 6
   },
   "features": {
@@ -15,5 +15,5 @@
     "init_win_bytes_forward": 1024.0,
     "flow_duration": 35.0
   },
-  "ground_truth": "PortScan"
+  "ground_truth": "Botnet"
 }

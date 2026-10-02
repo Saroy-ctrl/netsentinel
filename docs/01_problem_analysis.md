@@ -26,7 +26,7 @@ The brief also sets two rules. **Build the simple version first**, because "a sm
 | "precision / recall / **FPR** / AUC" | FPR matters most here, because SOC analysts are drowning in false positives. | We pick thresholds against an **explicit benign-FPR budget**, not the default 0.5. |
 | "class imbalance" | Rare classes (Heartbleed: 11 flows, Infiltration: 36) will be memorised rather than learned. | Rare families merge into a `Rare` bucket. We use class weights first and compare SMOTE on train only. |
 | "**discuss model drift**" | Both existing docs skipped this. It's an explicit requirement. | We monitor drift live with PSI on the top features plus the predicted attack rate. The dashboard has a drift panel, and the model card has a drift section. |
-| "alerts for the SOC — not auto-blocks" | Human in the loop, plus an alert volume a person can actually work through. | Flows are grouped into **incidents** (correlation), ranked by a priority score, and worked through acknowledge / escalate / dismiss-as-FP with an audit trail. Nothing gets blocked. |
+| "alerts for the SOC — not auto-blocks" | Human in the loop, plus an alert volume a person can actually work through. | Flows are grouped into **incidents** (correlation), ranked by a risk score (confidence × severity × burst) into HIGH / MEDIUM / LOW, and worked through acknowledge / escalate / dismiss-as-FP with an audit trail. Nothing gets blocked. |
 
 ## Who has this problem and why it matters (verified figures)
 
@@ -41,28 +41,28 @@ The brief also sets two rules. **Build the simple version first**, because "a sm
 
 ## Dataset decision
 
-The PS lists NSL-KDD / CICIDS2017 / UNSW-NB15, but the doc says tools and data are named **"only as examples"**. The only rule is *free and public*. We chose three datasets, each answering a different question (ADR-8 in [03](03_architecture.md)):
+The PS lists NSL-KDD / CICIDS2017 / UNSW-NB15, but the doc says tools and data are named **"only as examples"**. The only rule is *free and public*. We use two datasets, each answering a different question (ADR-8 in [03](03_architecture.md)):
 
 | Dataset | Use it for | Why |
 |---|---|---|
-| **CIC-IDS2017, corrected** (Engelen/Liu et al., IEEE CNS 2022) | **Training + main evaluation** | Modern attacks, 7 families, per-day captures that allow time-aware splits. The labels were manually audited and the flow bugs fixed. |
-| **CSE-CIC-IDS2018, corrected** (same authors, same fixed extractor) | **Unseen-network test** + measured drift | Different network, one year later, **identical features** (no mapping needed). Contains attack tools absent from 2017 (DDoS-HOIC, DDoS-LOIC-UDP), so the "novel variant" test uses real traffic. |
-| **LUFlow** (Lancaster University honeypots, labelled via CTI) | **Real-world check** | Real traffic, collected continuously since 2020 (real drift). Has an `outlier` label for unexplained traffic, which is the novelty detector's target. Binary labels only and a different schema, so it gets its own feature spec and bundle. |
-| NetFlow v3 family (UQ, 2025) | Considered, not chosen | The best "standard enterprise NetFlow" story (53 shared features), but it carries the source datasets' label noise and its extractor isn't fully open. Revisit after I1. |
+| **CSE-CIC-IDS2018, corrected** (Liu, Engelen et al., IEEE CNS 2022) | **Train, validate, test** | A large AWS network (420 machines, 30 servers, 50 attackers), 10 capture days, 7 attack scenarios and many tools (incl. HOIC). The corrected release fixes the labelling and flow-extraction bugs found in the original CIC datasets. |
+| **LUFlow** (Lancaster University honeypots, labelled via threat intelligence) | **Real-traffic showcase** (its own bundle, served live in the demo) | Real internet attack traffic, collected continuously since 2020, so it has real drift. Has an `outlier` label for unexplained traffic, which is the novelty detector's target. Binary labels only and a different schema, so it gets its own feature spec and bundle. |
+| CIC-IDS2017 (corrected) | Considered, not used | Smaller and less varied. Using it only as a cross-network test would add a second labelled dataset to process. |
+| NetFlow v3 family (UQ, 2025) | Considered, not used | The best "standard enterprise NetFlow" story, but it carries the source datasets' label noise and its extractor isn't fully open. |
 | UNSW-NB15 (original), NSL-KDD, IDS2025 | Don't use | Dated, known quality issues, or (IDS2025) just CICIDS2017 rebalanced with its label errors still in. |
 
-CICIDS2017 days: Mon = benign only · Tue = FTP/SSH brute force · Wed = DoS variants + Heartbleed · Thu = web attacks + infiltration · Fri = botnet, port scan, DDoS. **This layout drives our split design** (see [02](02_doc_validation.md) and [03](03_architecture.md)).
+2018 schedule: each attack runs for about an hour on one or two specific days (brute force 14-02 · DoS 15/16-02 · DDoS LOIC 20-02 · LOIC-UDP + HOIC 21-02 · web 22/23-02 · infiltration 28-02/01-03 · botnet 02-03). **This layout drives our split design**: a day-based split would remove whole families from training (see [03 §3.2](03_architecture.md)).
 
 ## Scope
 
-**In scope:** offline training on corrected CIC-IDS2017 · cross-network evaluation on CSE-CIC-IDS2018 · real-traffic validation on LUFlow · fusion of supervised and novelty detection · SHAP explanations · incident correlation and prioritisation · SOC console · Azure ML model registry · Azure OpenAI incident briefs · drift monitoring · replay-based live demo.
+**In scope:** offline training and evaluation on corrected CSE-CIC-IDS2018 · real-traffic showcase on LUFlow · fusion of supervised and novelty detection · SHAP explanations · incident correlation and prioritisation · SOC console · Azure ML model registry · Azure OpenAI incident briefs · drift monitoring · replay-based live demo.
 
 **Out of scope (say so explicitly in the deck):** inline blocking · claims about real zero-days (we demonstrate *families the model never saw*, which is a controlled proxy) · production-scale throughput · live capture on networks we don't own.
 
 ## Success criteria for Round 2
 
-1. Replay **real 2018 traffic from an unseen network** (including the never-trained DDoS-HOIC). The drift monitor fires, recalibration recovers, and the unseen attack is still flagged with an explanation. Backup: the holdout-family bundle shows a `Novel anomaly`.
+1. Replay botnet traffic into the bundle that **never saw a botnet**, and it shows up as a `Novel anomaly` incident with an explanation. The LOAO chart shows this across every family.
 2. The model card reports per-class P/R/F1/FPR/AUC, the LOAO table, the operating FPR and its limitations, and every number is reproducible from the repo.
 3. One alert storm (DDoS replay) produces a small number of incidents, not thousands of rows.
-4. The drift panel visibly reacts when the traffic distribution shifts.
+4. Real LUFlow traffic from a later month triggers a drift alert, and the recalibrated LUFlow bundle recovers it.
 5. The whole demo works with Azure unreachable: cached bundle plus template briefs.
