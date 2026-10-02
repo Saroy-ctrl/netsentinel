@@ -78,7 +78,7 @@ The PS names datasets "only as examples"; the rule is free and public.
 | Dataset | Job | Why this one | Feature schema |
 |---|---|---|---|
 | **CSE-CIC-IDS2018, corrected** (Liu, Engelen et al., IEEE CNS 2022) | **Train, validate, test** (P1, P2) | A large AWS network (420 machines, 30 servers, 50 attacker machines), 10 capture days, 7 attack scenarios with many tools (Patator, Hulk, GoldenEye, Slowloris, LOIC-HTTP/UDP, **HOIC**, DVWA web attacks, infiltration, Ares botnet). Labels were manually audited and the extractor bugs fixed. | CIC (fixed CICFlowMeter, ~80 features) |
-| **LUFlow** (Lancaster University honeypots, labelled via threat intelligence) | **Real-world showcase** (P3): its own bundle, served live in the demo | Real internet attack traffic on a real university network, collected continuously since 2020, so it has real drift. Its `outlier` label ("abnormal but unexplained") is exactly what the novelty detector targets. | LUFlow (16 fields): `feature_spec.luflow.json` |
+| **LUFlow** (Lancaster University honeypots, labelled via threat intelligence) | **Real-world showcase** (P3): its own bundle, served live in the demo | Real internet attack traffic on a real university network, collected continuously since 2020, so it has real drift. Its `outlier` label ("abnormal but unexplained") is exactly what the novelty detector targets. | LUFlow (16 CSV fields → 9 features): `feature_spec.luflow.json` |
 
 Downloads: distrinet-research.be/CNS2022 (corrected 2018 + fixed CICFlowMeter) · github.com/ruzzzzz/LUFlow (or Kaggle).
 
@@ -95,7 +95,7 @@ Downloads: distrinet-research.be/CNS2022 (corrected 2018 + fixed CICFlowMeter) �
 | Wed 28-02, Thu 01-03 | Infiltration (malicious download → internal Nmap scan) |
 | Fri 02-03 | Botnet (Ares) |
 
-**Size:** the original release has about 16M flows. M1 processes the CSVs **one day at a time** (never all at once), writes float32 parquet, and builds a training sample: all attack flows (capped per class) plus a fixed-seed benign sample of a few million flows. That trains comfortably on a 16 GB laptop.
+**Size (measured):** **63.2M raw flows (45.2M after removing exact duplicates)**, 36 GB of CSV inside a 10.4 GB zip. M1 never unzips: it streams each CSV in ~400 MB in-memory chunks (the streaming reader on a zip member was 40x slower), writes float32 parquet (8 GB), and builds a fixed-seed working sample of 3.5M train / 1.9M validation / 2.0M test flows, which trains comfortably on a 16 GB laptop. Full counts, dataset quirks and every drop decision: `docs/data_profile.md`. **LUFlow:** 63.0M raw flows in the 72-day subset (44.9M clean). About 10% of its `time_start` values are corrupted by the source and are repaired in the adapter; 9 features survive the spec.
 
 **Check on first download:** the corrected files must contain `Src IP`, `Dst IP` and `Timestamp` (the incident correlator and the time-blocked split need them). The original 2018 CSVs lack IPs on most days. That's one more reason to use only the corrected release.
 
@@ -104,8 +104,8 @@ Downloads: distrinet-research.be/CNS2022 (corrected 2018 + fixed CICFlowMeter) �
 ### 3.1 Data → families
 - Drop from features, keep as metadata: `Flow ID`, `Src IP`, `Dst IP`, `Src Port`, `Timestamp`. `Dst Port` is an open experiment: run it both ways and document the result (B12).
 - Inf/NaN: count them per column, then drop or clip them, and record the counts in `data_profile.md`. Remove exact duplicates.
-- **2018 label mapping → `AttackFamily`:** FTP/SSH-BruteForce → `BruteForce` · DoS GoldenEye/Slowloris/SlowHTTPTest/Hulk → `DoS` · DDoS LOIC-HTTP/LOIC-UDP/HOIC → `DDoS` · Web Brute Force/XSS/SQL Injection → `WebAttack` · Infiltration (all stages) → `Infiltration` · Ares → `Botnet`. "Attempted" labels in the corrected set → `BENIGN`, as the dataset authors recommend. Never treat them as their own class.
-- **Rare rule:** any family with < 1,000 clean training flows after cleaning is merged into `Rare`. Expect `WebAttack` to be borderline (web attacks are only hundreds of flows). Decide in M1-04 from the real counts and document the outcome.
+- **2018 label mapping → `AttackFamily`** (counts: `data/README.md`): SSH-BruteForce → `BruteForce` (FTP-Patator is 100% `Attempted`, so it is benign) · DoS GoldenEye/Slowloris/Hulk → `DoS` (SlowHTTPTest is absent from the corrected release) · DDoS LOIC-HTTP/LOIC-UDP/HOIC → `DDoS` · Web Brute Force/XSS/SQL Injection → `WebAttack` · Infiltration (all stages) → `Infiltration` · Ares → `Botnet`. "Attempted" labels in the corrected set → `BENIGN`, as the dataset authors recommend. Never treat them as their own class.
+- **Low-support rule:** any family with < 1,000 clean flows is flagged low-support. Measured: **`WebAttack` has only 283 flows** (every other family has ≥ 89k). It stays a named family (keeps its own severity 0.6 and MITRE T1190), uses `class_weight`, is reported with a caveat, and is **excluded from LOAO**. Merge it into `Rare` only if M2 finds it unlearnable.
 - **LUFlow mapping:** `benign` → `BENIGN`, `malicious` → attack (binary only; the family is `Malicious`), `outlier` → **left out of supervised training**, kept as a separate label to measure novelty capture.
 - Correlation pruning (|ρ| > 0.95, keep the more interpretable feature) on the 2018 train split only → `nscore/contracts/feature_spec.json`.
 
@@ -114,7 +114,7 @@ Downloads: distrinet-research.be/CNS2022 (corrected 2018 + fixed CICFlowMeter) �
 | Protocol | How | Answers | Used for |
 |---|---|---|---|
 | **P1 time-blocked + purge** (2018) | For each (day, label) group, sort by timestamp: first 70% → train, next 15% → val, last 15% → test. **Drop flows within 60 s of each block boundary (purge)** so a single attack session can't sit on both sides. Indices are saved to `data/splits/` so every run uses the exact same split. | How well do we detect *known* families? | Main per-class metrics, threshold tuning (val), model card |
-| **P2 LOAO** (2018) | For each family F in {DoS, DDoS, BruteForce, WebAttack, Infiltration, Botnet}: remove F completely from train and val, retrain RF + IF on a fixed-size sample, then measure recall on F's test flows at the calibrated benign FPR. | **Can we catch a family we've never seen?** | The headline chart: RF-only recall vs fusion recall for each held-out family |
+| **P2 LOAO** (2018) | For each family F in {DoS, DDoS, BruteForce, Infiltration, Botnet} (WebAttack is too small for a held-out test): remove F completely from train and val, retrain RF + IF on a fixed-size sample, then measure recall on F's test flows at the calibrated benign FPR. | **Can we catch a family we've never seen?** | The headline chart: RF-only recall vs fusion recall for each held-out family |
 | **P2b tool holdout** (2018) | Retrain without **DDoS-HOIC** flows only (LOIC stays). Measure HOIC recall. | Does the model learn **behaviour**, not tools? | One line in `external` + a Q&A answer |
 | **P3 real-world temporal** (LUFlow) | Same pipeline with `feature_spec.luflow.json`: train RF + IF on the earliest month(s), test month by month afterwards (recall, FPR, PSI over time). Also measure the share of `outlier` flows flagged as novel by IF vs RF. | Does it hold on real traffic, and how fast does it decay? | Real-world showcase, **measured drift curve** |
 | **P3b recalibration** (LUFlow) | Refit only the IF + thresholds on a **label-free recent benign window** from a later month, then re-test that month. | Can we recover from drift without new labels? | Drift → recalibrate → recover story, demo act 5 |
@@ -337,7 +337,7 @@ When `family_head` is false (LUFlow bundle), the UI hides family-specific widget
 | Normal vs attack + attack types | `rf_binary`, `rf_multiclass` | Family label on every 2018 incident |
 | Surfaces **novel** attacks | `iforest` + `fusion.fuse` | Demo act 4 + LOAO chart + LUFlow outlier capture (act 5) |
 | Precision / recall / FPR / AUC | `ml/evaluate` → `EvaluationReport` | Model page, model card |
-| Class imbalance | class weights, SMOTE comparison, Rare rule | Model card section + before/after table |
+| Class imbalance | class weights, SMOTE comparison, low-support rule | Model card section + before/after table |
 | **Discuss model drift** | `nscore/drift`, `/v1/drift`, drift page, P3/P3b, model card §Drift | **Measured** decay on real traffic (LUFlow month by month), live drift alert and recovery in act 5 |
 | Alert SOC, no auto-block | incidents + risk engine + actions + audit log | Demo acts 2–6 |
 | Honest evaluation | purged time-blocked split, FPR-budget thresholds, corrected dataset, limitations | Model card, Q&A sheet |

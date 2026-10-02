@@ -3,7 +3,7 @@ name = "netsentinel"
 version = "0.1.0"
 description = "ML layer that flags what signature IDS misses - explained, prioritised SOC incidents, never auto-block."
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.6"]
+dependencies = ["pydantic>=2.6", "numpy>=1.26", "pandas>=2.2"]
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 include = ["nscore*"]
 
 [tool.setuptools.package-data]
-"nscore.contracts" = ["*.json", "fixtures/*.json"]
+"nscore.contracts" = ["*.json", "fixtures/*.json", "baselines/*.json"]
 
 [tool.ruff]
 line-length = 120
@@ -22,5 +22,9 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+"ml/data/make_profile_doc.py" = ["E501"]  # report prose + table rows
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "api/tests"]
+pythonpath = ["."]  # `pytest` (not just `python -m pytest`) must see the ml/ package
