@@ -27,3 +27,4 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "api/tests"]
+pythonpath = ["."]  # `pytest` (not just `python -m pytest`) must see the ml/ package
