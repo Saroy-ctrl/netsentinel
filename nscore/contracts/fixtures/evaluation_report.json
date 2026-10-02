@@ -1,0 +1,215 @@
+{
+  "model_version": "nsb-0.0.0-fixture",
+  "split_strategy": "time-blocked per (day,label) 70/15/15",
+  "labels": [
+    "BENIGN",
+    "DoS",
+    "DDoS",
+    "PortScan",
+    "BruteForce",
+    "WebAttack",
+    "Botnet",
+    "Rare"
+  ],
+  "per_class": [
+    {
+      "family": "BENIGN",
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1": 0.9,
+      "fpr": 0.01,
+      "support": 1000,
+      "roc_auc": 0.97
+    },
+    {
+      "family": "DoS",
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1": 0.9,
+      "fpr": 0.01,
+      "support": 1000,
+      "roc_auc": 0.97
+    },
+    {
+      "family": "DDoS",
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1": 0.9,
+      "fpr": 0.01,
+      "support": 1000,
+      "roc_auc": 0.97
+    },
+    {
+      "family": "PortScan",
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1": 0.9,
+      "fpr": 0.01,
+      "support": 1000,
+      "roc_auc": 0.97
+    },
+    {
+      "family": "BruteForce",
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1": 0.9,
+      "fpr": 0.01,
+      "support": 1000,
+      "roc_auc": 0.97
+    },
+    {
+      "family": "WebAttack",
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1": 0.9,
+      "fpr": 0.01,
+      "support": 1000,
+      "roc_auc": 0.97
+    },
+    {
+      "family": "Botnet",
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1": 0.9,
+      "fpr": 0.01,
+      "support": 1000,
+      "roc_auc": 0.97
+    },
+    {
+      "family": "Rare",
+      "precision": 0.9,
+      "recall": 0.9,
+      "f1": 0.9,
+      "fpr": 0.01,
+      "support": 1000,
+      "roc_auc": 0.97
+    }
+  ],
+  "confusion_matrix": [
+    [
+      1000,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    [
+      5,
+      1000,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    [
+      5,
+      5,
+      1000,
+      5,
+      5,
+      5,
+      5,
+      5
+    ],
+    [
+      5,
+      5,
+      5,
+      1000,
+      5,
+      5,
+      5,
+      5
+    ],
+    [
+      5,
+      5,
+      5,
+      5,
+      1000,
+      5,
+      5,
+      5
+    ],
+    [
+      5,
+      5,
+      5,
+      5,
+      5,
+      1000,
+      5,
+      5
+    ],
+    [
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      1000,
+      5
+    ],
+    [
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      5,
+      1000
+    ]
+  ],
+  "macro_f1": 0.9,
+  "binary_roc_auc": 0.98,
+  "binary_pr_auc": 0.95,
+  "benign_fpr": 0.012,
+  "loao": [
+    {
+      "held_out_family": "DoS",
+      "rf_only_recall": 0.3,
+      "fusion_recall": 0.7,
+      "benign_fpr": 0.015
+    },
+    {
+      "held_out_family": "DDoS",
+      "rf_only_recall": 0.3,
+      "fusion_recall": 0.7,
+      "benign_fpr": 0.015
+    },
+    {
+      "held_out_family": "PortScan",
+      "rf_only_recall": 0.3,
+      "fusion_recall": 0.7,
+      "benign_fpr": 0.015
+    },
+    {
+      "held_out_family": "BruteForce",
+      "rf_only_recall": 0.3,
+      "fusion_recall": 0.7,
+      "benign_fpr": 0.015
+    },
+    {
+      "held_out_family": "WebAttack",
+      "rf_only_recall": 0.3,
+      "fusion_recall": 0.7,
+      "benign_fpr": 0.015
+    },
+    {
+      "held_out_family": "Botnet",
+      "rf_only_recall": 0.3,
+      "fusion_recall": 0.7,
+      "benign_fpr": 0.015
+    }
+  ],
+  "limitations": [
+    "FIXTURE DATA - not real results"
+  ]
+}

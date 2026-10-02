@@ -1,0 +1,75 @@
+{
+  "incident_id": "INC-1002",
+  "status": "new",
+  "verdict": "novel_anomaly",
+  "attack_family": "Unknown",
+  "mitre_technique_id": null,
+  "mitre_technique_name": null,
+  "priority": 61,
+  "priority_band": "P2",
+  "max_confidence": 0.71,
+  "flow_count": 112,
+  "src_ip": "172.16.0.1",
+  "dst_ip": "192.168.10.50",
+  "dst_port": 443,
+  "first_seen": "2026-10-02T09:32:00Z",
+  "last_seen": "2026-10-02T09:35:00Z",
+  "model_version": "nsb-0.0.0-fixture",
+  "top_features": [
+    {
+      "feature": "flow_iat_mean",
+      "value": 12.0,
+      "shap_value": 0.21,
+      "baseline_median": 48210.0
+    },
+    {
+      "feature": "syn_flag_count",
+      "value": 1.0,
+      "shap_value": 0.17,
+      "baseline_median": 0.0
+    },
+    {
+      "feature": "total_fwd_packets",
+      "value": 1.0,
+      "shap_value": 0.11,
+      "baseline_median": 6.0
+    },
+    {
+      "feature": "init_win_bytes_forward",
+      "value": 1024.0,
+      "shap_value": 0.08,
+      "baseline_median": 8192.0
+    },
+    {
+      "feature": "flow_duration",
+      "value": 35.0,
+      "shap_value": 0.05,
+      "baseline_median": 61844.0
+    }
+  ],
+  "sample_flow_ids": [
+    "F-0",
+    "F-1",
+    "F-2",
+    "F-3",
+    "F-4"
+  ],
+  "actions": [
+    {
+      "action_id": 1,
+      "incident_id": "INC-1002",
+      "analyst": "asha",
+      "action": "acknowledge",
+      "note": "looking",
+      "at": "2026-10-02T09:36:00Z"
+    }
+  ],
+  "brief": {
+    "incident_id": "INC-1002",
+    "text": "Possible novel activity from 172.16.0.1 to 192.168.10.50:443 across 112 flows. No known attack family matched, but the traffic sits far outside normal behaviour: inter-arrival times are ~4,000x shorter than typical and most flows carry a single SYN. Worth reviewing: check whether 172.16.0.1 is an authorised scanner before escalating.",
+    "source": "template",
+    "model_deployment": null,
+    "confidence_band": "medium",
+    "generated_at": "2026-10-02T09:37:00Z"
+  }
+}

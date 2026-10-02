@@ -1,0 +1,13 @@
+# offline training only (M1, M2)
+-e .
+pandas>=2.2
+pyarrow>=15
+numpy>=1.26
+scikit-learn>=1.5
+imbalanced-learn>=0.12
+shap>=0.46
+matplotlib>=3.8
+joblib>=1.4
+azure-ai-ml>=1.20
+azure-identity>=1.17
+jupyter

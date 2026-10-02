@@ -1,0 +1,27 @@
+# data & models - never commit
+data/*
+!data/README.md
+artifacts/
+*.joblib
+*.npy
+*.parquet
+*.pcap
+*.db
+*.db-wal
+*.db-shm
+# secrets
+.env
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+# os / ide
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

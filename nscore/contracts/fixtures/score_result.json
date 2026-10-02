@@ -1,0 +1,43 @@
+{
+  "flow_id": "F-0",
+  "verdict": "novel_anomaly",
+  "p_attack": 0.31,
+  "anomaly_percentile": 99.8,
+  "attack_family": "Unknown",
+  "family_confidence": null,
+  "top_features": [
+    {
+      "feature": "flow_iat_mean",
+      "value": 12.0,
+      "shap_value": 0.21,
+      "baseline_median": 48210.0
+    },
+    {
+      "feature": "syn_flag_count",
+      "value": 1.0,
+      "shap_value": 0.17,
+      "baseline_median": 0.0
+    },
+    {
+      "feature": "total_fwd_packets",
+      "value": 1.0,
+      "shap_value": 0.11,
+      "baseline_median": 6.0
+    },
+    {
+      "feature": "init_win_bytes_forward",
+      "value": 1024.0,
+      "shap_value": 0.08,
+      "baseline_median": 8192.0
+    },
+    {
+      "feature": "flow_duration",
+      "value": 35.0,
+      "shap_value": 0.05,
+      "baseline_median": 61844.0
+    }
+  ],
+  "incident_id": "INC-1002",
+  "model_version": "nsb-0.0.0-fixture",
+  "latency_ms": 8.4
+}

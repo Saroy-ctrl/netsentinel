@@ -1,0 +1,20 @@
+{
+  "model_version": "nsb-0.0.0-fixture",
+  "bundle_ref": "local:artifacts/fixture",
+  "registry": "local",
+  "trained_at": "2026-10-02T09:30:00Z",
+  "dataset": "CICIDS2017 (corrected, Engelen et al. 2021)",
+  "split_strategy": "time-blocked per (day,label) 70/15/15",
+  "feature_count": 52,
+  "thresholds": {
+    "tau_binary": 0.62,
+    "tau_anomaly": 99.5
+  },
+  "operating_fpr_target": 0.01,
+  "metrics_summary": {
+    "macro_f1": 0.9,
+    "binary_roc_auc": 0.98,
+    "benign_fpr": 0.012
+  },
+  "contract_version": "1.0.0"
+}

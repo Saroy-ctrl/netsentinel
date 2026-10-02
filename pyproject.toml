@@ -1,0 +1,26 @@
+[project]
+name = "netsentinel"
+version = "0.1.0"
+description = "ML layer that flags what signature IDS misses - explained, prioritised SOC incidents, never auto-block."
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.6"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["nscore*"]
+
+[tool.setuptools.package-data]
+"nscore.contracts" = ["*.json", "fixtures/*.json"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "api/tests"]

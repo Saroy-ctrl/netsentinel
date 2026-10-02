@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "flow_id": "F-0",
+    "observed_at": "2026-10-02T09:30:00Z",
+    "src_ip": "172.16.0.1",
+    "dst_ip": "192.168.10.50",
+    "src_port": 51234,
+    "dst_port": 443,
+    "protocol": 6
+  },
+  "features": {
+    "flow_iat_mean": 12.0,
+    "syn_flag_count": 1.0,
+    "total_fwd_packets": 1.0,
+    "init_win_bytes_forward": 1024.0,
+    "flow_duration": 35.0
+  },
+  "ground_truth": "PortScan"
+}
