@@ -35,6 +35,7 @@ class Detections:
     family_probs: list[dict[AttackFamily, float] | None]
     confidence: np.ndarray  # risk-engine confidence (0 for benign)
     X: np.ndarray  # the transformed matrix actually scored (for SHAP / drift / debugging)
+    raw: np.ndarray | None = None  # untouched feature values in spec order (explanations show these)
 
     def __len__(self) -> int:
         return len(self.verdict)
@@ -52,13 +53,18 @@ class DetectionEngine:
                                if self.has_anomaly else None)
 
     # --------------------------------------------------------------- scoring pieces (also used by evaluation)
-    def transform(self, flows) -> np.ndarray:
-        tr = self.bundle.transformer
+    def _frame(self, flows) -> pd.DataFrame | None:
         if isinstance(flows, pd.DataFrame):
-            return tr.transform(flows)
+            return flows
         if isinstance(flows, np.ndarray):
-            return flows.astype(np.float32, copy=False)
-        return tr.transform_records(list(flows))
+            return None
+        return pd.DataFrame.from_records(list(flows))
+
+    def transform(self, flows) -> np.ndarray:
+        frame = self._frame(flows)
+        if frame is None:
+            return np.asarray(flows).astype(np.float32, copy=False)
+        return self.bundle.transformer.transform(frame)
 
     def p_attack(self, X: np.ndarray) -> np.ndarray:
         proba = self.bundle.rf_binary.predict_proba(X)
@@ -74,7 +80,9 @@ class DetectionEngine:
 
     # --------------------------------------------------------------- full decision
     def detect(self, flows) -> Detections:
-        X = self.transform(flows)
+        frame = self._frame(flows)
+        X = self.bundle.transformer.transform(frame) if frame is not None else self.transform(flows)
+        raw = self.bundle.transformer.raw(frame) if frame is not None else None
         p, pct = self.p_attack(X), self.anomaly_percentile(X)
         n = len(X)
         family = [AttackFamily.BENIGN] * n
@@ -103,4 +111,4 @@ class DetectionEngine:
             elif v is Verdict.NOVEL_ANOMALY:
                 family[i] = AttackFamily.UNKNOWN
                 conf[i] = p[i] if p[i] >= self.tau_binary else novel_confidence(float(pct[i]), self.tau_anomaly)
-        return Detections(verdict, p, pct, family, closest, fconf, fprobs, conf, X)
+        return Detections(verdict, p, pct, family, closest, fconf, fprobs, conf, X, raw)

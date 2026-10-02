@@ -146,40 +146,95 @@
   "benign_fpr": 0.012,
   "loao": [
     {
-      "held_out_family": "DoS",
-      "rf_only_recall": 0.3,
-      "fusion_recall": 0.7,
-      "benign_fpr": 0.015
+      "held_out": "DoS",
+      "kind": "family",
+      "n_flows": 1000,
+      "budget": 0.001,
+      "recall": 0.9,
+      "recall_min": 0.8,
+      "recall_max": 0.97,
+      "novel_share": 0.95,
+      "seen_recall": 0.999,
+      "benign_fpr": 0.001,
+      "seeds": 3
     },
     {
-      "held_out_family": "DDoS",
-      "rf_only_recall": 0.3,
-      "fusion_recall": 0.7,
-      "benign_fpr": 0.015
+      "held_out": "DDoS",
+      "kind": "family",
+      "n_flows": 1000,
+      "budget": 0.001,
+      "recall": 0.9,
+      "recall_min": 0.8,
+      "recall_max": 0.97,
+      "novel_share": 0.95,
+      "seen_recall": 0.999,
+      "benign_fpr": 0.001,
+      "seeds": 3
     },
     {
-      "held_out_family": "BruteForce",
-      "rf_only_recall": 0.3,
-      "fusion_recall": 0.7,
-      "benign_fpr": 0.015
+      "held_out": "BruteForce",
+      "kind": "family",
+      "n_flows": 1000,
+      "budget": 0.001,
+      "recall": 0.9,
+      "recall_min": 0.8,
+      "recall_max": 0.97,
+      "novel_share": 0.95,
+      "seen_recall": 0.999,
+      "benign_fpr": 0.001,
+      "seeds": 3
     },
     {
-      "held_out_family": "WebAttack",
-      "rf_only_recall": 0.3,
-      "fusion_recall": 0.7,
-      "benign_fpr": 0.015
+      "held_out": "WebAttack",
+      "kind": "family",
+      "n_flows": 1000,
+      "budget": 0.001,
+      "recall": 0.9,
+      "recall_min": 0.8,
+      "recall_max": 0.97,
+      "novel_share": 0.95,
+      "seen_recall": 0.999,
+      "benign_fpr": 0.001,
+      "seeds": 3
     },
     {
-      "held_out_family": "Infiltration",
-      "rf_only_recall": 0.3,
-      "fusion_recall": 0.7,
-      "benign_fpr": 0.015
+      "held_out": "Infiltration",
+      "kind": "family",
+      "n_flows": 1000,
+      "budget": 0.001,
+      "recall": 0.9,
+      "recall_min": 0.8,
+      "recall_max": 0.97,
+      "novel_share": 0.95,
+      "seen_recall": 0.999,
+      "benign_fpr": 0.001,
+      "seeds": 3
     },
     {
-      "held_out_family": "Botnet",
-      "rf_only_recall": 0.3,
-      "fusion_recall": 0.7,
-      "benign_fpr": 0.015
+      "held_out": "Botnet",
+      "kind": "family",
+      "n_flows": 1000,
+      "budget": 0.001,
+      "recall": 0.9,
+      "recall_min": 0.8,
+      "recall_max": 0.97,
+      "novel_share": 0.95,
+      "seen_recall": 0.999,
+      "benign_fpr": 0.001,
+      "seeds": 3
+    },
+    {
+      "held_out": "DDoS-HOIC",
+      "kind": "tool",
+      "n_flows": 147000,
+      "budget": 0.001,
+      "recall": 1.0,
+      "recall_min": 1.0,
+      "recall_max": 1.0,
+      "novel_share": 1.0,
+      "seen_recall": 1.0,
+      "benign_fpr": 0.001,
+      "seeds": 3
     }
   ],
   "external": [

@@ -34,14 +34,14 @@ class Models:
 
 
 def fit_models(train: pd.DataFrame, tr: FlowTransformer, *, bin_params: dict | None = None,
-               fam_params: dict | None = None, exclude: np.ndarray | None = None) -> Models:
+               fam_params: dict | None = None, exclude: np.ndarray | None = None, seed: int = SEED) -> Models:
     """exclude: boolean mask of TRAIN rows to leave out of BOTH heads (leave-one-family/tool-out)."""
     keep = train if exclude is None else train[~exclude]
     bp, fp = {**BIN_PARAMS, **(bin_params or {})}, {**FAM_PARAMS, **(fam_params or {})}
     X, y = tr.transform(keep), is_attack(keep, "cic")
-    rf_bin = RandomForestClassifier(n_jobs=-1, random_state=SEED, **bp).fit(X, y)
-    rf_fam = RandomForestClassifier(n_jobs=-1, random_state=SEED, **fp).fit(X[y], keep["family"].to_numpy()[y])
-    return Models(tr, rf_bin, rf_fam, {"binary": bp, "family": fp, "train_rows": int(len(keep))})
+    rf_bin = RandomForestClassifier(n_jobs=-1, random_state=seed, **bp).fit(X, y)
+    rf_fam = RandomForestClassifier(n_jobs=-1, random_state=seed, **fp).fit(X[y], keep["family"].to_numpy()[y])
+    return Models(tr, rf_bin, rf_fam, {"binary": bp, "family": fp, "train_rows": int(len(keep)), "seed": seed})
 
 
 def scores(m: Models, X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

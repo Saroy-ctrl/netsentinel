@@ -217,12 +217,20 @@ class PerClassMetrics(_Model):
 
 
 class LoaoResult(_Model):
-    """Leave-One-Attack-family-Out: the family was removed from training entirely."""
+    """Leave-one-out: a whole attack FAMILY (kind='family') or one TOOL (kind='tool', e.g. DDoS-HOIC) was removed
+    from training of BOTH heads; its flows are then scored by the model that never saw it, at the stated FPR budget."""
 
-    held_out_family: AttackFamily
-    rf_only_recall: float
-    fusion_recall: float  # RF + IsolationForest
-    benign_fpr: float
+    held_out: str = Field(description="family name (AttackFamily value) or raw tool label")
+    kind: Literal["family", "tool"]
+    n_flows: int = Field(ge=0)
+    budget: float = Field(description="benign false-alarm budget the threshold was calibrated for, e.g. 0.001")
+    recall: float = Field(ge=0, le=1, description="share of held-out flows flagged as attacks (mean over seeds)")
+    recall_min: float = Field(ge=0, le=1, description="worst seed")
+    recall_max: float = Field(ge=0, le=1, description="best seed")
+    novel_share: float = Field(ge=0, le=1, description="share of flagged held-out flows labelled NOVEL (unfamiliar)")
+    seen_recall: float = Field(ge=0, le=1, description="same model trained WITH the held-out unit: the ceiling")
+    benign_fpr: float = Field(ge=0, le=1)
+    seeds: int = Field(ge=1)
 
 
 class ExternalEvalResult(_Model):

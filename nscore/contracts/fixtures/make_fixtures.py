@@ -123,8 +123,11 @@ def build() -> dict[str, object]:
                    for f in fams],
         confusion_matrix=[[1000 if r == c else 5 for c in range(len(fams))] for r in range(len(fams))],
         macro_f1=0.9, binary_roc_auc=0.98, binary_pr_auc=0.95, benign_fpr=0.012,
-        loao=[LoaoResult(held_out_family=f, rf_only_recall=0.3, fusion_recall=0.7, benign_fpr=0.015)
-              for f in fams[1:]],
+        loao=[LoaoResult(held_out=f.value, kind="family", n_flows=1000, budget=0.001, recall=0.9, recall_min=0.8,
+                         recall_max=0.97, novel_share=0.95, seen_recall=0.999, benign_fpr=0.001, seeds=3)
+              for f in fams[1:]]
+             + [LoaoResult(held_out="DDoS-HOIC", kind="tool", n_flows=147000, budget=0.001, recall=1.0, recall_min=1.0,
+                           recall_max=1.0, novel_share=1.0, seen_recall=1.0, benign_fpr=0.001, seeds=3)],
         external=[
             ExternalEvalResult(dataset="CSE-CIC-IDS2018 (corrected)", protocol="tool_holdout", binary_recall=0.93,
                                benign_fpr=0.012, novel_recall=0.93, notes="DDoS-HOIC removed from training"),

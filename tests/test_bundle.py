@@ -141,3 +141,26 @@ def test_ref_schemes():
         load_bundle("azureml:netsentinel-bundle@latest")
     with pytest.raises(ValueError, match="unknown bundle ref scheme"):
         load_bundle("s3:bucket/x")
+
+
+def test_explainer_top_features_are_ranked_additive_and_carry_baselines(bundles):
+    from nscore.detection.explain import Explainer
+
+    b = load_bundle(f"local:{bundles['cic']}")
+    det = DetectionEngine(b).detect(_records(b, n=60))
+    assert det.raw.shape == det.X.shape
+    ex = Explainer(b, fast_trees=10)
+    sv = ex.shap_values(det.X[:20])
+    # additivity: base value + sum(SHAP) reproduces the model's P(attack) for each flow
+    base = ex._full.expected_value[ex._attack_idx]
+    assert np.allclose(base + sv.sum(axis=1), det.p_attack[:20], atol=1e-6)
+    top = ex.contributions(det.X[:5], det.raw[:5], k=5)
+    assert len(top) == 5 and all(len(t) == 5 for t in top)
+    for t in top:
+        mags = [abs(c.shap_value) for c in t]
+        assert mags == sorted(mags, reverse=True)
+        assert all(c.baseline_median is not None and c.feature in b.transformer.feature_names for c in t)
+    i = 0
+    assert top[0][0].value == pytest.approx(det.raw[i, b.transformer.feature_names.index(top[0][0].feature)])
+    fast = ex.contributions(det.X[:5], det.raw[:5], k=5, fast=True)
+    assert len(fast) == 5 and len(ex.global_importance(det.X, fast=True)) == 46

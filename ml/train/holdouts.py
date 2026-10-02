@@ -10,6 +10,9 @@ For each held-out unit (a whole FAMILY, or one TOOL that has sibling tools) both
   * false "novel" rate on familiar attacks and on benign false alarms
   * precision of the NOVEL bucket at natural prevalence (benign and attacks re-weighted to the full split)
 `seen` is the same model trained WITH the unit, i.e. the in-distribution ceiling.
+With --seeds N the whole experiment is repeated with N different training subsamples / forest seeds; recall is
+reported as mean with min and max (single runs are knife-edge at strict budgets: SSH brute force read 0.998 and
+0.11 in two runs).
 Writes artifacts/experiments/holdouts_<split>/results.json.
 """
 
@@ -32,9 +35,10 @@ RF_TRAIN = 1_000_000
 FALSE_NOVEL = 0.02
 
 
-def run_unit(label: str, held_col: str, held_value: str, sub, Xv, Xe, val, ev, tr, w, full: P.Models) -> dict:
+def run_unit(label: str, held_col: str, held_value: str, sub, Xv, Xe, val, ev, tr, w, full: P.Models,
+             seed: int = SEED, params: dict | None = None) -> dict:
     mask = (sub[held_col] == held_value).to_numpy()
-    m = P.fit_models(sub, tr, exclude=mask)
+    m = P.fit_models(sub, tr, exclude=mask, seed=seed, **(params or {}))
     p_v, c_v, _ = P.scores(m, Xv)
     p_e, c_e, _ = P.scores(m, Xe)
     benign_v = (val["tool"] == "BENIGN").to_numpy()
@@ -67,30 +71,62 @@ def run_unit(label: str, held_col: str, held_value: str, sub, Xv, Xe, val, ev, t
     return row
 
 
+def aggregate(runs: list[dict]) -> dict:
+    """Mean / min / max over seeds for every numeric budget metric; counts are identical across seeds."""
+    out = {"label": runs[0]["label"], "n_held_out": runs[0]["n_held_out"], "seeds": len(runs), "budgets": {}}
+    for b in runs[0]["budgets"]:
+        rows = [r["budgets"][b] for r in runs]
+        agg = {}
+        for k in rows[0]:
+            vals = [r[k] for r in rows]
+            if isinstance(vals[0], (int, float)) and not isinstance(vals[0], bool):
+                agg[k] = float(np.mean(vals))
+            elif k == "novel_bucket_precision_natural":
+                v = [x for x in vals if x is not None]
+                agg[k] = float(np.mean(v)) if v else None
+        rec = [r["recall"] for r in rows]
+        agg["recall_min"], agg["recall_max"] = float(min(rec)), float(max(rec))
+        agg["recall_by_seed"] = [round(r["recall"], 4) for r in rows]
+        out["budgets"][b] = agg
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--split", choices=["val", "test"], default="val")
+    ap.add_argument("--seeds", type=int, default=1)
+    ap.add_argument("--only", nargs="*", help="restrict to these units (family or tool names)")
     a = ap.parse_args()
     train, val = load_split("cic", "train"), load_split("cic", "val")
     ev = val if a.split == "val" else load_split("cic", a.split)
     tr = fit_transformer("cic", train)
-    sub = train.sample(RF_TRAIN, random_state=SEED).reset_index(drop=True)
     Xv, Xe = tr.transform(val), tr.transform(ev)
     w = cic_weights(ev, a.split)
-    with timed("reference model trained WITH every family"):
-        full = P.fit_models(sub, tr)
     results = {"split": a.split, "budgets": BUDGETS, "false_novel": FALSE_NOVEL, "train_rows": RF_TRAIN,
-               "families": {}, "tools": {}}
-    for kind, units, col in (("families", LOAO_FAMILIES, "family"), ("tools", list(TOOLS), "tool")):
-        for u in units:
-            with timed(f"hold out {col} {u}"):
-                results[kind][u] = run_unit(u, col, u, sub, Xv, Xe, val, ev, tr, w, full)
-            r = results[kind][u]["budgets"]
-            print(f"  {col[:4]} {u:15s} n={results[kind][u]['n_held_out']:>8,} recall@FPR "
-                  + " ".join(f"{float(b) * 100:g}%={r[b]['recall']:.3f}" for b in r)
-                  + f" | novel-share@0.1%={r['0.001']['novel_share_of_detected']:.2f}"
-                  + f" false-novel={r['0.001']['familiar_false_novel']:.3f}", flush=True)
+               "seeds": a.seeds, "families": {}, "tools": {}}
+    per_unit: dict[tuple[str, str], list[dict]] = {}
+    for s in range(a.seeds):
+        sub = train.sample(RF_TRAIN, random_state=SEED + s).reset_index(drop=True)
+        with timed(f"seed {s}: reference model trained WITH every family"):
+            full = P.fit_models(sub, tr, seed=SEED + s)
+        for kind, units, col in (("families", LOAO_FAMILIES, "family"), ("tools", list(TOOLS), "tool")):
+            for u in units:
+                if a.only and u not in a.only:
+                    continue
+                with timed(f"seed {s}: hold out {col} {u}"):
+                    row = run_unit(u, col, u, sub, Xv, Xe, val, ev, tr, w, full, seed=SEED + s)
+                per_unit.setdefault((kind, u), []).append(row)
+                r = row["budgets"]
+                print(f"  s{s} {col[:4]} {u:15s} n={row['n_held_out']:>8,} recall@FPR "
+                      + " ".join(f"{float(b) * 100:g}%={r[b]['recall']:.3f}" for b in r), flush=True)
+    for (kind, u), runs in per_unit.items():
+        results[kind][u] = aggregate(runs)
     dump_json(out_dir(f"holdouts_{a.split}") / "results.json", results)
+    print("\n== mean [min-max] over seeds, recall at FPR budgets", BUDGETS)
+    for kind in ("families", "tools"):
+        for u, r in results[kind].items():
+            print(f"  {u:15s} " + " | ".join(f"{b}: {v['recall']:.3f} [{v['recall_min']:.2f}-{v['recall_max']:.2f}]"
+                                            for b, v in r["budgets"].items()))
 
 
 if __name__ == "__main__":
