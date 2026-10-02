@@ -7,3 +7,4 @@ numpy>=1.26
 joblib>=1.4
 scikit-learn>=1.5
 shap>=0.46
+matplotlib>=3.8
