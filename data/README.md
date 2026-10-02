@@ -42,7 +42,44 @@ Keep everything on a drive with space (D:); the 2018 zip expands to much more th
 original release: `id`, `Fwd/Bwd RST Flags`, `ICMP Code`, `ICMP Type`, `Total TCP Flow Time` (fixed-CICFlowMeter features).
 Roughly 600 bytes per row → expect on the order of **60M flows** in total (exact counts below once streamed).
 
-Row counts per day and label: _filled in by M1-01's counting pass after the download finishes._
+**Zip sha256:** `7f7b6f8065a88527bcb6e1579f088e1d0480a49903c5fd7e4e907ab238344f6e`
+
+**Flow counts** (streamed from the zip with `ml/data/profile_raw.py`, 121 s; raw per-label counts incl. `Attempted` are in `raw/cic2018/profile.json`):
+
+| Family | Flows | Share | Notes |
+|---|---:|---:|---|
+| BENIGN | 59,353,486 | 93.921% |  |
+| BENIGN (attempted, relabelled) | 306,237 | 0.485% | authors' advice: `Attempted Category != -1` → benign |
+| DoS | 1,834,210 | 2.902% | Hulk 98%; GoldenEye, Slowloris. **SlowHTTPTest is absent** from the corrected release |
+| DDoS | 1,374,148 | 2.174% | HOIC 79%, LOIC-HTTP 21%, LOIC-UDP 0.2% |
+| Botnet | 142,921 | 0.226% | Ares only |
+| BruteForce | 94,197 | 0.149% | **SSH-Patator only**: all 298,874 FTP-Patator flows are `Attempted` (the FTP port was closed) |
+| Infiltration | 89,663 | 0.142% | **99.7% is the internal Nmap port scan** (89,374 flows); Dropbox download 85, victim↔attacker 204 |
+| WebAttack | 283 | 0.000% | **283 flows**: Brute Force 131, XSS 113, SQL 39 → below the 1,000 low-support threshold |
+| **Total** | **63,195,145** | | attacks (clean) = 3,535,422 |
+
+Per day file (families after the "Attempted → benign" rule):
+
+| Day file | BENIGN | DoS | DDoS | Botnet | BruteForce | Infiltration | WebAttack | attempted→benign | total |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Wednesday-14-02-2018 | 5,610,799 | 0 | 0 | 0 | 94,197 | 0 | 0 | 193,354 | 5,898,350 |
+| Thursday-15-02-2018 | 5,372,471 | 31,050 | 0 | 0 | 0 | 0 | 0 | 6,581 | 5,410,102 |
+| Friday-16-02-2018 | 5,481,500 | 1,803,160 | 0 | 0 | 0 | 0 | 0 | 105,606 | 7,390,266 |
+| Tuesday-20-02-2018 | 5,764,497 | 0 | 290,125 | 0 | 0 | 0 | 0 | 80 | 6,054,702 |
+| Wednesday-21-02-2018 | 5,878,399 | 0 | 1,084,023 | 0 | 0 | 0 | 0 | 171 | 6,962,593 |
+| Thursday-22-02-2018 | 6,070,945 | 0 | 0 | 0 | 0 | 0 | 125 | 83 | 6,071,153 |
+| Friday-23-02-2018 | 5,976,251 | 0 | 0 | 0 | 0 | 0 | 158 | 72 | 5,976,481 |
+| Wednesday-28-02-2018 | 6,518,882 | 0 | 0 | 0 | 0 | 49,829 | 0 | 15 | 6,568,726 |
+| Thursday-01-03-2018 | 6,511,554 | 0 | 0 | 0 | 0 | 39,834 | 0 | 13 | 6,551,401 |
+| Friday-02-03-2018 | 6,168,188 | 0 | 0 | 142,921 | 0 | 0 | 0 | 262 | 6,311,371 |
+
+**Findings that shape the plan**
+1. **Attacks are 5.6% of flows** (3.54M of 63.2M). Always report per-class metrics and FPR, never accuracy.
+2. **WebAttack (283 flows) is too small to learn reliably.** Decision (M1-04, to confirm with M2): keep it as its own label in the binary head and the multiclass head with `class_weight`, report it **with a low-support caveat, and leave it out of LOAO** (a held-out family needs thousands of test flows). Merge into `Rare` only if M2 finds it unlearnable.
+3. **LOAO families: DoS, DDoS, Botnet, BruteForce (SSH), Infiltration** (5). The HOIC tool-holdout (1.08M flows) works as planned.
+4. **Infiltration ≈ an internal port scan from a compromised host.** Keep severity 1.0 (the team's rationale: attacker already inside) but M5 should say so plainly in `threat_model.md`, and MITRE T1046 fits.
+5. **Timestamps are not clean.** The `Friday-23` file starts on 2018-02-21 (stray flows from two days earlier), and several day files run past midnight into the next date. Split on the timestamp, never on the file name or the calendar date.
+6. **Timestamps are UTC, +4 h vs the times on the CIC dataset page** (measured: SSH-Patator is 14:01–15:31 on the page, 18:01–19:32 in the data; HOIC matches the same shift). Use the data's own timestamps, and don't use the page's windows to relabel flows.
 
 ## LUFlow (real-traffic showcase)
 
