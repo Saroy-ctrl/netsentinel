@@ -21,7 +21,7 @@ The brief also sets two rules. **Build the simple version first**, because "a sm
 
 | What the brief says | What it really asks | How we answer it |
 |---|---|---|
-| "signature-based IDS misses **novel** attacks" | Can your system flag something it was **never trained on**? A plain supervised classifier only recognises the attack families it was trained on, so on its own it isn't a full answer. | We add a **novelty detector** (an Isolation Forest trained on benign traffic only) next to the Random Forest. We prove it works with a **Leave-One-Attack-family-Out (LOAO)** evaluation on 2018, and on real LUFlow traffic by measuring how much of the unexplained `outlier` traffic it flags (see [03 §3.2](03_architecture.md#32-evaluation-protocol)). |
+| "signature-based IDS misses **novel** attacks" | Can your system flag something it was **never trained on**? A plain supervised classifier only recognises the attack families it was trained on, so on its own it isn't a full answer. | We **measure it** instead of assuming it: leave-one-family-out and tool-holdout evaluations on 2018 (both heads retrained without the held-out attack). A benign-only Isolation Forest, our first idea, did not work on these flows; the supervised forest detects unseen floods, DoS and botnet traffic, and its family head's low confidence marks them *unfamiliar*. Real LUFlow traffic adds a check against unexplained `outlier` flows (see [03 §3.2](03_architecture.md#32-evaluation-protocol), `docs/experiments.md`). |
 | "honest evaluation" | Avoid the classic CIC-dataset traps: random row splits that leak, a day-based split that drops whole families, accuracy on mostly-benign data, SMOTE before the split, and the original releases' label errors. | We use the **corrected** 2018 release, split by purged time blocks, report per-class P/R/F1/**FPR**/AUC, apply SMOTE (if we use it) only to training folds, and publish a model card with a limitations section. |
 | "precision / recall / **FPR** / AUC" | FPR matters most here, because SOC analysts are drowning in false positives. | We pick thresholds against an **explicit benign-FPR budget**, not the default 0.5. |
 | "class imbalance" | Benign traffic dominates 2018, and the web attacks (Brute Force-Web, XSS, SQL Injection) are only hundreds of flows, so a model will memorise them instead of learning them. | **Rare rule:** any family with < 1,000 clean training flows merges into `Rare`. We use class weights first and compare SMOTE on train only. |
@@ -57,13 +57,13 @@ The PS lists NSL-KDD / CICIDS2017 / UNSW-NB15, but the doc says tools and data a
 
 ## Scope
 
-**In scope:** offline training and evaluation on corrected CSE-CIC-IDS2018 · real-traffic showcase on LUFlow · fusion of supervised and novelty detection · SHAP explanations · incident correlation and prioritisation · SOC console · Azure ML model registry · Azure OpenAI incident briefs · drift monitoring · replay-based live demo.
+**In scope:** offline training and evaluation on corrected CSE-CIC-IDS2018 · real-traffic showcase on LUFlow · supervised detection with an unfamiliar-attack signal · SHAP explanations · incident correlation and prioritisation · SOC console · Azure ML model registry · Azure OpenAI incident briefs · drift monitoring · replay-based live demo.
 
 **Out of scope (say so explicitly in the deck):** inline blocking · claims about real zero-days (we demonstrate *families the model never saw*, which is a controlled proxy) · production-scale throughput · live capture on networks we don't own.
 
 ## Success criteria for Round 2
 
-1. Replay botnet traffic into the bundle that **never saw a botnet**, and it shows up as a `Novel anomaly` incident with an explanation. The LOAO chart shows this across every family.
+1. Replay botnet traffic into the bundle that **never saw a botnet**, and it still shows up as an incident, labelled `Novel anomaly` ("closest known family …") with an explanation. The leave-one-out tables show where this works and where it doesn't.
 2. The model card reports per-class P/R/F1/FPR/AUC, the LOAO table, the operating FPR and its limitations, and every number is reproducible from the repo.
 3. One alert storm (DDoS replay) produces a small number of incidents, not thousands of rows.
 4. Real LUFlow traffic from a later month triggers a drift alert, and the recalibrated LUFlow bundle recovers it.
