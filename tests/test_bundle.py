@@ -137,8 +137,8 @@ def test_packager_guards(bundles, tmp_path):
 
 
 def test_ref_schemes():
-    with pytest.raises(NotImplementedError):
-        load_bundle("azureml:netsentinel-bundle@latest")
+    with pytest.raises(ValueError, match="bad azureml ref"):
+        load_bundle("azureml:two words")
     with pytest.raises(ValueError, match="unknown bundle ref scheme"):
         load_bundle("s3:bucket/x")
 

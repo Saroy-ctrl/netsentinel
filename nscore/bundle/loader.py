@@ -131,5 +131,9 @@ def load_bundle(ref: str, cache_dir: str = "artifacts/cache") -> Bundle:
     if scheme == "local":
         return load_local(rest, ref=ref)
     if scheme == "azureml":
-        raise NotImplementedError("azureml refs are implemented in M2-12 (nscore.bundle.azure)")
+        from nscore.bundle.azure import fetch_bundle, parse_ref
+
+        name, version = parse_ref(rest)
+        path = fetch_bundle(name, version, cache_dir)
+        return load_local(path, ref=ref, registry="azureml")
     raise ValueError(f"unknown bundle ref scheme {scheme!r}; use local:<path> or azureml:<name>[:<version>|@latest]")
