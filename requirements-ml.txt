@@ -2,10 +2,10 @@
 -e .
 pandas>=2.2
 pyarrow>=15
-numpy>=1.26
-scikit-learn>=1.5
+numpy>=2.0
+scikit-learn==1.9.1  # bundles are pickled: training and serving must match exactly
 imbalanced-learn>=0.12
-shap>=0.46
+shap==0.52.0
 matplotlib>=3.8
 joblib>=1.4
 azure-ai-ml>=1.20

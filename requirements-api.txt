@@ -2,10 +2,10 @@
 -e .
 fastapi>=0.115
 uvicorn[standard]>=0.30
-numpy>=1.26
+numpy>=2.0
 pandas>=2.2
-scikit-learn>=1.5   # must match the version the bundle was trained with (pinned in manifest)
-shap>=0.46
+scikit-learn==1.9.1  # MUST equal the version bundles are trained with (manifest tag sklearn_version)
+shap==0.52.0
 joblib>=1.4
 openai>=1.40        # AzureOpenAI client
 azure-ai-ml>=1.20
