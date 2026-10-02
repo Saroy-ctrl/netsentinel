@@ -59,12 +59,13 @@ def score_month(rf, iso, X, df, w, t_b: float, t_a: float) -> dict:
     p = rf.predict_proba(X)[:, 1]
     a = -iso.score_samples(X)
     benign, outlier = (df["family"] == "BENIGN").to_numpy(), (df["family"] == "Outlier").to_numpy()
-    rep = M.binary_report(y, p, t_b, w)
+    lab = ~outlier  # `outlier` flows are unexplained, not benign: they must not count as negatives (that inflated FPR to 15-28%)
+    rep = M.binary_report(y[lab], p[lab], t_b, w[lab])
     return {"n": int(len(df)), "recall": rep["recall"], "benign_fpr": rep["fpr"], "precision_natural": rep["precision"],
             "roc_auc": rep["roc_auc"], "malicious_share": float(y.mean()),
             "outlier_flag_rf": float((p[outlier] >= t_b).mean()) if outlier.any() else None,
             "outlier_flag_if": float((a[outlier] >= t_a).mean()) if outlier.any() else None,
-            "benign_flag_if": float((a[benign] >= t_a).mean()), "if_roc_auc_malicious": float(roc_auc_score(y, a))}
+            "benign_flag_if": float((a[benign] >= t_a).mean()), "if_roc_auc_malicious": float(roc_auc_score(y[lab], a[lab]))}
 
 
 def main() -> None:

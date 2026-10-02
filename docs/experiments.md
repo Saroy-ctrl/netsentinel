@@ -19,9 +19,9 @@ Plain settings (100 trees, balanced class weights, 2 samples per leaf), trained 
 
 ## 2. Class imbalance
 
-Binary head, 1M-row train subsample (validation, threshold 0.5):
+Binary head, 1M-row train subsample (validation, threshold 0.5; precision here is on the raw attack-heavy sample, so only the comparison between rows is meaningful):
 
-| weights | precision | recall | benign FPR |
+| weights | precision (raw sample) | recall | benign FPR |
 |---|---|---|---|
 | no_weights | 99.991% | 99.955% | 0.0024% |
 | balanced_subsample | 99.981% | 99.977% | 0.0051% |
@@ -74,7 +74,7 @@ Trained on 500k benign train flows; scored on validation; threshold = 99.5th ben
 
 **Finding: it does not work on these flow features.** ROC-AUC 0.70-0.87 and essentially no attack is flagged at a usable false-alarm rate. Flood and brute-force flows look like ordinary individual flows; what makes them attacks is volume, which a per-flow detector cannot see. **Decision:** the IsolationForest is optional in the bundle format and is *not* part of the CIC decision rule. It is kept for the binary LUFlow bundle, where the `outlier` label gives it a fair test (section 8).
 
-## 5. Generalisation to attacks the model has never seen (validation split, single seed)
+## 5. Generalisation to attacks the model has never seen (test split, mean [min-max] over 3 seeds)
 
 Both heads are retrained WITHOUT the held-out unit; thresholds come from validation benign flows. `labelled novel` = share of the detected held-out flows the family head was unsure about. `seen ceiling` = the same model trained WITH the unit.
 
@@ -82,25 +82,25 @@ Both heads are retrained WITHOUT the held-out unit; thresholds come from validat
 
 | held out | flows | recall @ 0.01% FPR | recall @ 0.05% FPR | recall @ 0.1% FPR | recall @ 0.5% FPR | labelled novel (0.1%) | seen ceiling (0.1%) |
 |---|---|---|---|---|---|---|---|
-| DoS | 201,584 | 32.1% | 77.3% | 90.5% | 97.8% | 100% | 100.0% |
-| DDoS | 162,035 | 70.1% | 84.1% | 100.0% | 100.0% | 100% | 100.0% |
-| BruteForce | 12,061 | 0.0% | 0.0% | 0.0% | 11.0% | 0% | 100.0% |
-| Infiltration | 3,074 | 4.2% | 6.1% | 6.4% | 11.9% | 100% | 99.1% |
-| Botnet | 19,299 | 0.0% | 97.0% | 99.9% | 100.0% | 100% | 100.0% |
+| DoS | 238,522 | 29% [20-44] | 83% [81-85] | 85% [84-86] | 93% [93-95] | 100% | 100.0% |
+| DDoS | 186,567 | 55% [46-63] | 78% [78-79] | 79% [79-79] | 81% [80-82] | 100% | 100.0% |
+| BruteForce | 13,097 | 0% [0-0] | 29% [0-74] | 98% [93-100] | 100% [100-100] | 100% | 100.0% |
+| Infiltration | 6,556 | 0% [0-0] | 1% [1-1] | 1% [1-1] | 9% [8-11] | 100% | 97.8% |
+| Botnet | 20,319 | 0% [0-0] | 1% [0-3] | 66% [51-76] | 99% [99-100] | 100% | 100.0% |
 
 **Tool holdout** (one tool removed, sibling tools remain):
 
 | held out | flows | recall @ 0.01% FPR | recall @ 0.05% FPR | recall @ 0.1% FPR | recall @ 0.5% FPR | labelled novel (0.1%) | seen ceiling (0.1%) |
 |---|---|---|---|---|---|---|---|
-| DDoS-HOIC | 127,674 | 100.0% | 100.0% | 100.0% | 100.0% | 100% | 100.0% |
-| DDoS-LOIC-HTTP | 34,188 | 0.0% | 90.1% | 100.0% | 100.0% | 100% | 100.0% |
-| DoS Hulk | 199,127 | 54.5% | 99.5% | 100.0% | 100.0% | 100% | 100.0% |
-| DoS GoldenEye | 1,507 | 0.2% | 10.4% | 75.5% | 99.9% | 100% | 100.0% |
-| DoS Slowloris | 950 | 0.1% | 100.0% | 100.0% | 100.0% | 100% | 100.0% |
+| DDoS-HOIC | 147,439 | 100% [100-100] | 100% [100-100] | 100% [100-100] | 100% [100-100] | 100% | 100.0% |
+| DDoS-LOIC-HTTP | 38,801 | 0% [0-0] | 1% [0-1] | 1% [1-1] | 2% [1-2] | 100% | 100.0% |
+| DoS Hulk | 235,172 | 74% [64-92] | 100% [100-100] | 100% [100-100] | 100% [100-100] | 100% | 100.0% |
+| DoS GoldenEye | 2,263 | 1% [0-2] | 92% [78-100] | 100% [100-100] | 100% [100-100] | 100% | 100.0% |
+| DoS Slowloris | 1,087 | 16% [0-31] | 89% [84-100] | 100% [100-100] | 100% [100-100] | 100% | 100.0% |
 
-* Familiar attacks are mislabelled "novel" only 0.3%-1.9% of the time at the 0.1% budget (by construction ~2%).
+* Familiar attacks are mislabelled "novel" only 0.5%-2.9% of the time at the 0.1% budget (by construction ~2%).
 * **The supervised forest generalises** to unseen floods, DoS and botnet traffic at strict false-alarm budgets, and the family head's low confidence marks those detections as unfamiliar. This is the evidence for "catches what signatures miss".
-* **It does not generalise to low-and-slow families**: SSH brute force and internal Nmap scanning (Infiltration) are mostly missed when held out. Say so in the pitch.
+* **Where it does not generalise**: internal Nmap scanning (Infiltration) and the LOIC-HTTP tool are missed when held out at every budget. SSH brute force and botnet traffic are caught only at looser budgets (brute force near 0.1%, botnet 0.1-0.5%) and are knife-edge at stricter ones. Say so in the pitch.
 * Recall at the strictest budgets swings between seeds (the min-max ranges); report ranges, never a single run.
 
 ## 6. Hyper-parameter search
@@ -127,5 +127,42 @@ Confirmation over 3 fresh seeds (the single-run ranking is noisy):
 
 **Decision:** the three tuned configs are statistically indistinguishable (all about +0.15 over the default). The smallest and fastest (depth 16, 100-sample leaves, 20% of features per split) was frozen. DDoS-LOIC-HTTP stays near 0% at the strictest budget in every configuration: tuning cannot fix that.
 
+## 7. Operating point (final model, test split, natural prevalence)
 
+Threshold chosen on validation for each benign false-alarm budget; everything below is measured on the test split once:
+
+| budget | tau_binary | test benign FPR | recall | precision | flagged novel | recall Botnet | recall BruteForce | recall DDoS | recall DoS | recall Infiltration | recall WebAttack |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 0.010% | 0.4095 | 0.070% | 99.86% | 99.1% | 3.6% | 100% | 100% | 100% | 100% | 98% | 75% |
+| 0.050% | 0.2234 | 0.134% | 99.94% | 98.2% | 3.8% | 100% | 100% | 100% | 100% | 99% | 86% |
+| 0.100% | 0.1367 | 0.199% | 99.99% | 97.4% | 4.0% | 100% | 100% | 100% | 100% | 99% | 89% |
+| 0.500% | 0.0514 | 0.554% | 100.00% | 93.1% | 4.8% | 100% | 100% | 100% | 100% | 100% | 100% |
+| 1.000% | 0.0382 | 0.784% | 100.00% | 90.6% | 5.3% | 100% | 100% | 100% | 100% | 100% | 100% |
+
+**Decision:** the shipped bundle uses the 0.1% budget. At this network's scale (about 330k benign flows per hour) even 0.1% is hundreds of false-alarm flows per hour before incident grouping; the correlator exists for exactly that. The curve is in the bundle (`operating_curve.json`) so the UI can show the trade-off.
+
+## 8. LUFlow: real honeypot traffic, month by month
+
+Binary RandomForest + benign-only IsolationForest trained on 2020-06/07 and FROZEN; every later month is scored with those models. `recal` = IsolationForest and thresholds refit on that month's label-free benign window.
+
+| month | kind | malicious share | recall | benign FPR | ROC-AUC | max PSI (status) | outliers flagged by RF | by IForest | recal recall | recal FPR |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2020-06 | same_period | 32% | 99.8% | 0.30% | 1.000 | 0.14 (watch) | 100% | 3% |  |  |
+| 2020-07 | same_period | 50% | 99.9% | 0.49% | 1.000 | 0.39 (alert) | 98% | 10% |  |  |
+| 2020-08 | later | 42% | 99.9% | 0.71% | 1.000 | 0.20 (watch) | 100% | 3% | 99.9% | 0.79% |
+| 2020-09 | later | 30% | 99.8% | 0.25% | 1.000 | 0.14 (watch) | 100% | 2% | 99.5% | 0.10% |
+| 2020-10 | later | 34% | 99.8% | 0.19% | 1.000 | 0.10 (ok) | 100% | 2% | 99.8% | 0.42% |
+| 2020-11 | later | 38% | 99.9% | 0.46% | 1.000 | 0.18 (watch) | 100% | 2% | 99.9% | 0.93% |
+| 2020-12 | later | 11% | 99.8% | 0.25% | 1.000 | 0.36 (alert) | 100% | 1% | 99.8% | 0.23% |
+| 2021-01 | later | 24% | 99.8% | 0.17% | 1.000 | 0.12 (watch) | 100% | 2% | 99.0% | 0.03% |
+| 2021-02 | later | 24% | 99.8% | 0.24% | 1.000 | 0.10 (watch) | 100% | 2% | 99.9% | 0.57% |
+
+Frozen thresholds from validation: benign FPR budget 0.5%.
+
+**Reading this honestly:**
+
+* The frozen model keeps ~99.8% recall with benign FPR near the budget for all 7 later months, while PSI reports `watch`/`alert` on most of them. Drift in the inputs did not translate into worse results here, so PSI is a *warning light*, not a performance measure.
+* LUFlow is the easy problem: ROC-AUC rounds to 1.000 because honeypot bots are very different from known production traffic, and `malicious` is defined by threat-intelligence matches. This is a real-traffic and drift check, not a headline accuracy.
+* The forest flags ~100% of the unexplained `outlier` flows (they look like the malicious class); the benign-only IsolationForest flags only 1-10% of them. On LUFlow too, the supervised model is the better detector of unexplained traffic.
+* Label-free recalibration (refit the IsolationForest and thresholds on a recent benign window) did not improve results: it moves FPR by a few tenths of a percent in both directions. Recalibration is kept as a documented capability, not claimed as a win.
 

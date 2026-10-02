@@ -151,8 +151,9 @@ def holdout_section() -> str:
         "* **The supervised forest generalises** to unseen floods, DoS and botnet traffic at strict false-alarm budgets, and the "
         "family head's low confidence marks those detections as unfamiliar. This is the evidence for \"catches what signatures "
         "miss\".",
-        "* **It does not generalise to low-and-slow families**: SSH brute force and internal Nmap scanning (Infiltration) are "
-        "mostly missed when held out. Say so in the pitch.",
+        "* **Where it does not generalise**: internal Nmap scanning (Infiltration) and the LOIC-HTTP tool are missed when held "
+        "out at every budget. SSH brute force and botnet traffic are caught only at looser budgets (brute force near 0.1%, "
+        "botnet 0.1-0.5%) and are knife-edge at stricter ones. Say so in the pitch.",
         "* Recall at the strictest budgets swings between seeds (the min-max ranges); report ranges, never a single run.", ""])
 
 
@@ -211,7 +212,17 @@ def luflow_section() -> str:
         "those models. `recal` = IsolationForest and thresholds refit on that month's label-free benign window.", "",
         table(["month", "kind", "malicious share", "recall", "benign FPR", "ROC-AUC", "max PSI (status)",
                "outliers flagged by RF", "by IForest", "recal recall", "recal FPR"], rows), "",
-        f"Frozen thresholds from validation: benign FPR budget {pct(r['budget'], 1)}.", ""])
+        f"Frozen thresholds from validation: benign FPR budget {pct(r['budget'], 1)}.", "",
+        "**Reading this honestly:**", "",
+        "* The frozen model keeps ~99.8% recall with benign FPR near the budget for all 7 later months, while PSI reports `watch`/`alert` "
+        "on most of them. Drift in the inputs did not translate into worse results here, so PSI is a *warning light*, not a "
+        "performance measure.",
+        "* LUFlow is the easy problem: ROC-AUC rounds to 1.000 because honeypot bots are very different from known production traffic, "
+        "and `malicious` is defined by threat-intelligence matches. This is a real-traffic and drift check, not a headline accuracy.",
+        "* The forest flags ~100% of the unexplained `outlier` flows (they look like the malicious class); the benign-only IsolationForest "
+        "flags only 1-10% of them. On LUFlow too, the supervised model is the better detector of unexplained traffic.",
+        "* Label-free recalibration (refit the IsolationForest and thresholds on a recent benign window) did not improve results: it moves "
+        "FPR by a few tenths of a percent in both directions. Recalibration is kept as a documented capability, not claimed as a win.", ""])
 
 
 def main() -> None:

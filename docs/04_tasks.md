@@ -73,7 +73,7 @@ Schedule I3 at least **2–3 days before Round 2**, not the night before.
 - [x] **M2-10** `nscore/bundle/`: packager (manifest + sha256) and `load_bundle("local:…")` with hash verification, supporting `family_head = False`. Build **bundle v1 (2018, full)** and **`demo-holdout-botnet`**. *Deps: M2-08, M2-09, M1-07* → **unblocks M3 real scoring (I1)**
 - [x] **M2-11 ★ LUFlow real-world study (P3 + P3b).** Same pipeline with `feature_spec.luflow.json`, binary RF + IF only. Train on the earliest month(s) and test month by month (recall, FPR, PSI), plus the share of `outlier` flows flagged as novel by IF vs RF. Then refit IF + thresholds on each test month's recent benign window and re-test. Package **`netsentinel-luflow`** and **`netsentinel-luflow-recal`**. Results go into `external`, plus a month-by-month chart. *Deps: M2-07, M2-10, M1-09*
 - [x] **M2-12** Azure ML (*implemented and tested with a fake client; run `scripts/azure_register.py` once your workspace exists*): create the workspace, register all four bundles with tags, implement `load_bundle("azureml:…")` with a cache fallback, and **prove it works by pulling into a clean environment**. *Deps: M2-11*
-- [ ] **M2-13** Model card (`docs/model_card.md`): metrics, LOAO, operating point, **real-world results (LUFlow)**, a **drift section with measured numbers**, limitations. Done with M1 (data section) and M5 (Q&A wording). *Deps: M2-08, M2-11*
+- [x] **M2-13** Model card (`docs/model_card.md`): metrics, LOAO, operating point, **real-world results (LUFlow)**, a **drift section with measured numbers**, limitations. Done with M1 (data section) and M5 (Q&A wording). *Deps: M2-08, M2-11*
 
 ## M3 — Backend & Platform
 

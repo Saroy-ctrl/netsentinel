@@ -335,7 +335,7 @@ When `family_head` is false (LUFlow bundle), the UI hides family-specific widget
 | PS requirement | Where it's met | Evidence on demo day |
 |---|---|---|
 | Normal vs attack + attack types | `rf_binary`, `rf_multiclass` | Family label on every 2018 incident |
-| Surfaces **novel** attacks | binary RF generalisation + family-head confidence (`fusion.fuse`) | Demo act 4 + leave-one-out tables (floods/DoS/botnet yes, SSH brute force and Nmap no) + LUFlow outlier capture (act 5) |
+| Surfaces **novel** attacks | binary RF generalisation + family-head confidence (`fusion.fuse`) | Demo act 4 + leave-one-out tables (floods/DoS yes; botnet and SSH brute force only at 0.1-0.5% budgets; Nmap scans and LOIC-HTTP no) + LUFlow outlier capture (act 5) |
 | Precision / recall / FPR / AUC | `ml/evaluate` → `EvaluationReport` | Model page, model card |
 | Class imbalance | class weights, SMOTE comparison, low-support rule | Model card section + before/after table |
 | **Discuss model drift** | `nscore/drift`, `/v1/drift`, drift page, P3/P3b, model card §Drift | **Measured** decay on real traffic (LUFlow month by month), live drift alert and recovery in act 5 |
@@ -347,7 +347,7 @@ When `family_head` is false (LUFlow bundle), the UI hides family-specific widget
 
 | # | Decision | Alternatives considered | Why |
 |---|---|---|---|
-| ADR-1 (**revised after measurement**) | Binary RF detects; family-head confidence marks unfamiliar attacks. IsolationForest optional, LUFlow only | Original: RF + benign-only IsolationForest fusion; autoencoder | We assumed a supervised RF cannot detect unseen attacks and built a benign-only IForest for that. **Measured on CIC-IDS2018: the IForest has ROC-AUC 0.70-0.87 and ~0 recall at a usable false-alarm rate; the supervised RF detects held-out families/tools (floods, DoS, botnet) at strict budgets and the family head's confidence separates unfamiliar from familiar attacks with ROC-AUC 0.997-1.000.** Evidence: `docs/experiments.md` §4-5. Known gaps: SSH brute force and internal Nmap scans are not detected when unseen. |
+| ADR-1 (**revised after measurement**) | Binary RF detects; family-head confidence marks unfamiliar attacks. IsolationForest optional, LUFlow only | Original: RF + benign-only IsolationForest fusion; autoencoder | We assumed a supervised RF cannot detect unseen attacks and built a benign-only IForest for that. **Measured on CIC-IDS2018: the IForest has ROC-AUC 0.70-0.87 and ~0 recall at a usable false-alarm rate; the supervised RF detects held-out families/tools (floods, DoS, botnet) at strict budgets and the family head's confidence separates unfamiliar from familiar attacks with ROC-AUC 0.997-1.000.** Evidence: `docs/experiments.md` §4-5. Known gaps (test, 3 seeds): internal Nmap scans and the LOIC-HTTP tool are not detected when unseen; SSH brute force (97% at 0.1% budget, 29% at 0.05%) and botnet (66% at 0.1%, 99% at 0.5%) only at looser budgets. |
 | ADR-2 | Purged time-blocked per-class split + LOAO | day-based split; random split | A day-based split removes whole families from training. A random split leaks sessions. |
 | ADR-3 | Incidents, not per-flow alerts | per-flow alerts | Per-flow alerts make alert fatigue worse, which contradicts the pitch. |
 | ADR-4 | Contract-first monorepo with shared `nscore` | separate repos; no contracts | Lets 5 people work in parallel and avoids train/serve skew. |
