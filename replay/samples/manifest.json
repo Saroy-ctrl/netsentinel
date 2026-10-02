@@ -1,0 +1,220 @@
+{
+ "n_max": 10000,
+ "seed": 11,
+ "files": {
+  "2018_benign_background": {
+   "rows": 10000,
+   "available_in_test": 616890,
+   "nonfinite_replaced": 0,
+   "span_s": 72.0,
+   "first": "2018-02-14T20:45:06.565907Z",
+   "ground_truth": {
+    "BENIGN": 10000
+   },
+   "tools": {
+    "BENIGN": 10000
+   },
+   "selection": "middle",
+   "name": "2018_benign_background",
+   "schema": "cic"
+  },
+  "2018_ssh_bruteforce": {
+   "rows": 10000,
+   "available_in_test": 13097,
+   "nonfinite_replaced": 0,
+   "span_s": 575.6,
+   "first": "2018-02-14T19:21:26.118648Z",
+   "ground_truth": {
+    "BruteForce": 10000
+   },
+   "tools": {
+    "SSH-BruteForce": 10000
+   },
+   "selection": "middle",
+   "name": "2018_ssh_bruteforce",
+   "schema": "cic"
+  },
+  "2018_dos_hulk": {
+   "rows": 10000,
+   "available_in_test": 235172,
+   "nonfinite_replaced": 0,
+   "span_s": 4.4,
+   "first": "2018-02-16T17:57:28.639975Z",
+   "ground_truth": {
+    "DoS": 10000
+   },
+   "tools": {
+    "DoS Hulk": 10000
+   },
+   "selection": "middle",
+   "name": "2018_dos_hulk",
+   "schema": "cic"
+  },
+  "2018_ddos_hoic": {
+   "rows": 10000,
+   "available_in_test": 147439,
+   "nonfinite_replaced": 0,
+   "span_s": 42.3,
+   "first": "2018-02-21T18:59:53.206337Z",
+   "ground_truth": {
+    "DDoS": 10000
+   },
+   "tools": {
+    "DDoS-HOIC": 10000
+   },
+   "selection": "middle",
+   "name": "2018_ddos_hoic",
+   "schema": "cic"
+  },
+  "2018_botnet_ares": {
+   "rows": 10000,
+   "available_in_test": 20319,
+   "nonfinite_replaced": 0,
+   "span_s": 535.9,
+   "first": "2018-03-02T19:40:11.892247Z",
+   "ground_truth": {
+    "Botnet": 10000
+   },
+   "tools": {
+    "Botnet Ares": 10000
+   },
+   "selection": "middle",
+   "name": "2018_botnet_ares",
+   "schema": "cic"
+  },
+  "2018_infiltration_nmap": {
+   "rows": 3581,
+   "available_in_test": 3581,
+   "nonfinite_replaced": 0,
+   "span_s": 259.0,
+   "first": "2018-02-28T18:34:21.757512Z",
+   "ground_truth": {
+    "Infiltration": 3581
+   },
+   "tools": {
+    "Infiltration - NMAP Portscan": 3581
+   },
+   "selection": "middle",
+   "name": "2018_infiltration_nmap",
+   "schema": "cic"
+  },
+  "2018_webattack_all": {
+   "rows": 36,
+   "available_in_test": 36,
+   "nonfinite_replaced": 0,
+   "span_s": 100911.7,
+   "first": "2018-02-22T15:15:28.262487Z",
+   "ground_truth": {
+    "WebAttack": 36
+   },
+   "tools": {
+    "Web Attack - Brute Force": 17,
+    "Web Attack - XSS": 14,
+    "Web Attack - SQL": 5
+   },
+   "selection": "middle",
+   "name": "2018_webattack_all",
+   "schema": "cic"
+  },
+  "luflow_2020-06": {
+   "rows": 10000,
+   "available_in_test": 1113685,
+   "nonfinite_replaced": 0,
+   "span_s": 251302.5,
+   "first": "2020-06-28T02:11:19.867167Z",
+   "ground_truth": {
+    "BENIGN": 6872,
+    "Malicious": 1872,
+    "Outlier": 1256
+   },
+   "tools": {
+    "benign": 6872,
+    "malicious": 1872,
+    "outlier": 1256
+   },
+   "selection": "random",
+   "name": "luflow_2020-06",
+   "schema": "luflow"
+  },
+  "luflow_2020-08": {
+   "rows": 10000,
+   "available_in_test": 3243752,
+   "nonfinite_replaced": 0,
+   "span_s": 1900786.2,
+   "first": "2020-08-09T23:59:51.863984Z",
+   "ground_truth": {
+    "BENIGN": 4884,
+    "Malicious": 4171,
+    "Outlier": 945
+   },
+   "tools": {
+    "benign": 4884,
+    "malicious": 4171,
+    "outlier": 945
+   },
+   "selection": "random",
+   "name": "luflow_2020-08",
+   "schema": "luflow"
+  },
+  "luflow_2020-10": {
+   "rows": 10000,
+   "available_in_test": 4470124,
+   "nonfinite_replaced": 0,
+   "span_s": 1986022.4,
+   "first": "2020-10-09T00:17:02.597374Z",
+   "ground_truth": {
+    "BENIGN": 5592,
+    "Malicious": 3419,
+    "Outlier": 989
+   },
+   "tools": {
+    "benign": 5592,
+    "malicious": 3419,
+    "outlier": 989
+   },
+   "selection": "random",
+   "name": "luflow_2020-10",
+   "schema": "luflow"
+  },
+  "luflow_2020-12": {
+   "rows": 10000,
+   "available_in_test": 3473969,
+   "nonfinite_replaced": 0,
+   "span_s": 1986618.4,
+   "first": "2020-12-09T00:02:03.582138Z",
+   "ground_truth": {
+    "BENIGN": 7881,
+    "Malicious": 1113,
+    "Outlier": 1006
+   },
+   "tools": {
+    "benign": 7881,
+    "malicious": 1113,
+    "outlier": 1006
+   },
+   "selection": "random",
+   "name": "luflow_2020-12",
+   "schema": "luflow"
+  },
+  "luflow_2021-02": {
+   "rows": 10000,
+   "available_in_test": 3720485,
+   "nonfinite_replaced": 0,
+   "span_s": 989946.4,
+   "first": "2021-02-06T00:02:16.525702Z",
+   "ground_truth": {
+    "BENIGN": 5500,
+    "Malicious": 2401,
+    "Outlier": 2099
+   },
+   "tools": {
+    "benign": 5500,
+    "malicious": 2401,
+    "outlier": 2099
+   },
+   "selection": "random",
+   "name": "luflow_2021-02",
+   "schema": "luflow"
+  }
+ }
+}

@@ -8,6 +8,7 @@
    0.0001,
    0.9999
   ],
+  "clip_per_group": true,
   "corr_method": "spearman",
   "corr_threshold": 0.95,
   "log1p_if_skew_above": 5.0,
@@ -36,7 +37,7 @@
    "dtype": "float32",
    "clip": [
     0.0,
-    1452492736.1686
+    2147483926.5792
    ],
    "log1p": true,
    "nan_rate": 0.0,
@@ -48,7 +49,7 @@
    "dtype": "float32",
    "clip": [
     0.0,
-    63868.27769999782
+    65286.0
    ],
    "log1p": true,
    "nan_rate": 0.0,
@@ -60,7 +61,7 @@
    "dtype": "float32",
    "clip": [
     0.0,
-    65077.029099999985
+    65178.39689999999
    ],
    "log1p": false,
    "nan_rate": 0.0,
@@ -72,7 +73,7 @@
    "dtype": "float32",
    "clip": [
     0.0,
-    246.0
+    249.0
    ],
    "log1p": true,
    "nan_rate": 0.0,
@@ -84,7 +85,7 @@
    "dtype": "float32",
    "clip": [
     1.0,
-    252.0
+    253.04409999999916
    ],
    "log1p": true,
    "nan_rate": 0.0,
@@ -96,7 +97,7 @@
    "dtype": "float32",
    "clip": [
     0.0,
-    30.0901624643309
+    31.37636800060269
    ],
    "log1p": false,
    "nan_rate": 0.0,
@@ -108,7 +109,7 @@
    "dtype": "float32",
    "clip": [
     0.0,
-    35.509166819755876
+    38.56812722358668
    ],
    "log1p": true,
    "nan_rate": 0.0,
@@ -120,7 +121,7 @@
    "dtype": "float32",
    "clip": [
     0.0,
-    2206952.9458748363
+    2521248.415849993
    ],
    "log1p": true,
    "nan_rate": 0.0,

@@ -78,7 +78,7 @@ The PS names datasets "only as examples"; the rule is free and public.
 | Dataset | Job | Why this one | Feature schema |
 |---|---|---|---|
 | **CSE-CIC-IDS2018, corrected** (Liu, Engelen et al., IEEE CNS 2022) | **Train, validate, test** (P1, P2) | A large AWS network (420 machines, 30 servers, 50 attacker machines), 10 capture days, 7 attack scenarios with many tools (Patator, Hulk, GoldenEye, Slowloris, LOIC-HTTP/UDP, **HOIC**, DVWA web attacks, infiltration, Ares botnet). Labels were manually audited and the extractor bugs fixed. | CIC (fixed CICFlowMeter, ~80 features) |
-| **LUFlow** (Lancaster University honeypots, labelled via threat intelligence) | **Real-world showcase** (P3): its own bundle, served live in the demo | Real internet attack traffic on a real university network, collected continuously since 2020, so it has real drift. Its `outlier` label ("abnormal but unexplained") is exactly what the novelty detector targets. | LUFlow (16 fields): `feature_spec.luflow.json` |
+| **LUFlow** (Lancaster University honeypots, labelled via threat intelligence) | **Real-world showcase** (P3): its own bundle, served live in the demo | Real internet attack traffic on a real university network, collected continuously since 2020, so it has real drift. Its `outlier` label ("abnormal but unexplained") is exactly what the novelty detector targets. | LUFlow (16 CSV fields → 9 features): `feature_spec.luflow.json` |
 
 Downloads: distrinet-research.be/CNS2022 (corrected 2018 + fixed CICFlowMeter) · github.com/ruzzzzz/LUFlow (or Kaggle).
 
@@ -95,7 +95,7 @@ Downloads: distrinet-research.be/CNS2022 (corrected 2018 + fixed CICFlowMeter) �
 | Wed 28-02, Thu 01-03 | Infiltration (malicious download → internal Nmap scan) |
 | Fri 02-03 | Botnet (Ares) |
 
-**Size:** the original release has about 16M flows. M1 processes the CSVs **one day at a time** (never all at once), writes float32 parquet, and builds a training sample: all attack flows (capped per class) plus a fixed-seed benign sample of a few million flows. That trains comfortably on a 16 GB laptop.
+**Size (measured):** **63.2M raw flows (45.2M after removing exact duplicates)**, 36 GB of CSV inside a 10.4 GB zip. M1 never unzips: it streams each CSV in ~400 MB in-memory chunks (the streaming reader on a zip member was 40x slower), writes float32 parquet (8 GB), and builds a fixed-seed working sample of 3.5M train / 1.9M validation / 2.0M test flows, which trains comfortably on a 16 GB laptop. Full counts, dataset quirks and every drop decision: `docs/data_profile.md`. **LUFlow:** 63.0M raw flows in the 72-day subset (44.9M clean). About 10% of its `time_start` values are corrupted by the source and are repaired in the adapter; 9 features survive the spec.
 
 **Check on first download:** the corrected files must contain `Src IP`, `Dst IP` and `Timestamp` (the incident correlator and the time-blocked split need them). The original 2018 CSVs lack IPs on most days. That's one more reason to use only the corrected release.
 
@@ -337,7 +337,7 @@ When `family_head` is false (LUFlow bundle), the UI hides family-specific widget
 | Normal vs attack + attack types | `rf_binary`, `rf_multiclass` | Family label on every 2018 incident |
 | Surfaces **novel** attacks | `iforest` + `fusion.fuse` | Demo act 4 + LOAO chart + LUFlow outlier capture (act 5) |
 | Precision / recall / FPR / AUC | `ml/evaluate` → `EvaluationReport` | Model page, model card |
-| Class imbalance | class weights, SMOTE comparison, Rare rule | Model card section + before/after table |
+| Class imbalance | class weights, SMOTE comparison, low-support rule | Model card section + before/after table |
 | **Discuss model drift** | `nscore/drift`, `/v1/drift`, drift page, P3/P3b, model card §Drift | **Measured** decay on real traffic (LUFlow month by month), live drift alert and recovery in act 5 |
 | Alert SOC, no auto-block | incidents + risk engine + actions + audit log | Demo acts 2–6 |
 | Honest evaluation | purged time-blocked split, FPR-budget thresholds, corrected dataset, limitations | Model card, Q&A sheet |
