@@ -12,6 +12,6 @@ try:
     st.write(f"**Version:** `{model.model_version}` | **Registry:** `{model.bundle_ref}`")
     report = get_evaluation()
     st.write(f"**Macro F1:** {report.macro_f1:.3f} | **Binary ROC-AUC:** {report.binary_roc_auc:.3f}")
-    st.write(f"**Benign FPR:** {report.benign_fpr:.4f} | **Classes:** {[l.value for l in report.labels]}")
+    st.write(f"**Benign FPR:** {report.benign_fpr:.4f} | **Classes:** {[label.value for label in report.labels]}")
 except APIError as e:
     st.error(f"Could not load model info: {e}")

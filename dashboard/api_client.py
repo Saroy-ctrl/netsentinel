@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -212,7 +213,7 @@ def post_action(
     """POST /v1/incidents/{id}/actions — acknowledge, escalate, confirm, dismiss_fp, etc."""
     if _OFFLINE:
         # Return a synthetic record so the UI can show feedback without a live API.
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         return AnalystActionRecord(
             action_id=999,
@@ -220,7 +221,7 @@ def post_action(
             analyst=analyst,
             action=action.action,
             note=action.note,
-            at=datetime.now(tz=timezone.utc),
+            at=datetime.now(tz=UTC),
         )
     headers = {"X-Analyst": analyst}
     return AnalystActionRecord.model_validate(

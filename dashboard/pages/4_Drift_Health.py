@@ -9,8 +9,16 @@ from dashboard.api_client import APIError, get_drift, get_live_metrics  # noqa: 
 
 try:
     drift = get_drift()
-    st.write(f"**Drift status:** `{drift.status}` | **Max PSI:** {drift.max_psi:.3f} | **Window:** {drift.window_size} flows")
+    st.write(
+        f"**Drift status:** `{drift.status}` | "
+        f"**Max PSI:** {drift.max_psi:.3f} | "
+        f"**Window:** {drift.window_size} flows"
+    )
     metrics = get_live_metrics()
-    st.write(f"**Flows/s:** {metrics.flows_per_sec_1m:.1f} | **p50:** {metrics.latency_ms_p50} ms | **p95:** {metrics.latency_ms_p95} ms")
+    st.write(
+        f"**Flows/s:** {metrics.flows_per_sec_1m:.1f} | "
+        f"**p50:** {metrics.latency_ms_p50} ms | "
+        f"**p95:** {metrics.latency_ms_p95} ms"
+    )
 except APIError as e:
     st.error(f"Could not load drift data: {e}")

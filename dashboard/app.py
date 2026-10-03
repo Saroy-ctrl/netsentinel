@@ -121,7 +121,7 @@ Use the **sidebar** to navigate between pages:
 )
 
 # API-down banner (M4-10 polish; already scaffolded here)
-if not (os.environ.get("NS_OFFLINE", "").strip().lower() in ("1", "true", "yes")):
+if os.environ.get("NS_OFFLINE", "").strip().lower() not in ("1", "true", "yes"):
     try:
         from dashboard.api_client import health_check
 
