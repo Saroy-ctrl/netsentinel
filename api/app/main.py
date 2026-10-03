@@ -1,52 +1,152 @@
+"""NetSentinel FastAPI application.
+
+M3-01: Mock skeleton (NS_MOCK=1) — all endpoints return contract-typed fixtures.
+M3-02: SQLite schema and repository layer.
+M3-03: Real bundle loading at startup (MODEL_REF env var → load_bundle).
+        /health, /v1/model, /v1/model/evaluation now served from the loaded Bundle
+        when a bundle is present.  NS_MOCK=1 fallback is preserved for all paths.
+"""
+
+from __future__ import annotations
+
+import logging
 import os
-from typing import Any
-from fastapi import FastAPI, HTTPException, Request, Header
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Any
 
-from nscore.contracts import schemas
+from fastapi import FastAPI, Header, HTTPException
+from pydantic import BaseModel
+
 from api.app import fixtures
+from nscore.bundle.loader import Bundle, load_bundle
+from nscore.contracts import schemas
 
-app = FastAPI(title="NetSentinel API", version="0.1.0")
+logger = logging.getLogger(__name__)
 
-# Check mock mode
-IS_MOCK = os.environ.get("NS_MOCK") == "1"
+# ---------------------------------------------------------------------------
+# Lifespan – bundle loading (M3-03)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_MODEL_REF = "local:artifacts/bundles/mock-cic"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load the model bundle at startup; clear it on shutdown."""
+    ref = os.environ.get("MODEL_REF", _DEFAULT_MODEL_REF)
+    try:
+        bundle: Bundle = load_bundle(ref)
+        app.state.bundle = bundle
+        logger.info("M3-03: bundle loaded — version=%s ref=%s", bundle.version, ref)
+    except Exception as exc:
+        # In mock-only CI the default path may not exist; log and continue so
+        # NS_MOCK=1 tests still run.  Any other failure is re-raised so the
+        # operator knows the bundle is broken.
+        if os.environ.get("NS_MOCK") == "1":
+            app.state.bundle = None
+            logger.warning(
+                "M3-03: bundle load failed in mock mode (NS_MOCK=1), continuing without bundle. "
+                "Error: %s",
+                exc,
+            )
+        else:
+            raise
+    yield
+    app.state.bundle = None
+
+
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
+app = FastAPI(title="NetSentinel API", version="0.1.0", lifespan=lifespan)
+
+
+def _is_mock() -> bool:
+    """Check NS_MOCK at request time so tests can set the env var after module import."""
+    return os.environ.get("NS_MOCK") == "1"
+
+
+def _bundle() -> Bundle | None:
+    """Return the loaded Bundle, or None if not yet available."""
+    try:
+        return app.state.bundle
+    except AttributeError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# GET /health
+# ---------------------------------------------------------------------------
+
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    if IS_MOCK:
+    b = _bundle()
+    if b is not None:
+        return {"status": "ok", "model_loaded": True, "model_version": b.version}
+    # NS_MOCK=1 fallback
+    if _is_mock():
         info = fixtures.get_model_info()
-        return {
-            "status": "ok",
-            "model_loaded": True,
-            "model_version": info.model_version
-        }
+        return {"status": "ok", "model_loaded": True, "model_version": info.model_version}
     return {"status": "ok", "model_loaded": False, "model_version": "unknown"}
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/model
+# ---------------------------------------------------------------------------
+
 
 @app.get("/v1/model", response_model=schemas.ModelInfo)
 def get_model_info():
-    if IS_MOCK:
+    b = _bundle()
+    if b is not None:
+        return b.model_info()
+    if _is_mock():
         return fixtures.get_model_info()
     raise HTTPException(status_code=501, detail="Not implemented")
 
+
+# ---------------------------------------------------------------------------
+# GET /v1/model/evaluation
+# ---------------------------------------------------------------------------
+
+
 @app.get("/v1/model/evaluation", response_model=schemas.EvaluationReport)
 def get_model_evaluation():
-    if IS_MOCK:
+    b = _bundle()
+    if b is not None:
+        if b.evaluation_report is None:
+            raise HTTPException(status_code=404, detail="Evaluation report not present in this bundle")
+        return schemas.EvaluationReport.model_validate(b.evaluation_report)
+    if _is_mock():
         return fixtures.get_evaluation_report()
     raise HTTPException(status_code=501, detail="Not implemented")
 
+
+# ---------------------------------------------------------------------------
+# POST /v1/flows  (M3-01 mock only; real scoring in M3-04)
+# ---------------------------------------------------------------------------
+
+
 @app.post("/v1/flows", response_model=schemas.ScoreBatchResponse)
 def score_flows(batch: schemas.FlowBatch, x_api_key: str | None = Header(None)):
-    if IS_MOCK:
+    if _is_mock():
         result = fixtures.get_score_result()
         return schemas.ScoreBatchResponse(
             received=len(batch.flows),
             results=[result for _ in batch.flows],
             incidents_created=1,
-            incidents_updated=0
+            incidents_updated=0,
         )
     raise HTTPException(status_code=501, detail="Not implemented")
+
+
+# ---------------------------------------------------------------------------
+# Incident endpoints  (M3-01 mock only; real DB in M3-07)
+# ---------------------------------------------------------------------------
+
 
 @app.get("/v1/incidents", response_model=schemas.IncidentPage)
 def get_incidents(
@@ -57,36 +157,43 @@ def get_incidents(
     since: str | None = None,
     limit: int = 50,
     offset: int = 0,
-    sort: str = "risk"
+    sort: str = "risk",
 ):
-    if IS_MOCK:
+    if _is_mock():
         return fixtures.get_incident_page()
     raise HTTPException(status_code=501, detail="Not implemented")
 
+
 @app.get("/v1/incidents/{incident_id}", response_model=schemas.IncidentDetail)
 def get_incident(incident_id: str):
-    if IS_MOCK:
+    if _is_mock():
         detail = fixtures.get_incident_detail()
         detail.incident_id = incident_id
         return detail
     raise HTTPException(status_code=501, detail="Not implemented")
 
+
 @app.post("/v1/incidents/{incident_id}/actions", response_model=schemas.AnalystActionRecord)
-def add_incident_action(incident_id: str, action: schemas.AnalystActionIn, x_analyst: str | None = Header(None)):
-    if IS_MOCK:
+def add_incident_action(
+    incident_id: str,
+    action: schemas.AnalystActionIn,
+    x_analyst: str | None = Header(None),
+):
+    if _is_mock():
         return schemas.AnalystActionRecord(
             action_id=1,
             incident_id=incident_id,
             analyst=x_analyst or "mock_analyst",
             action=action.action,
             note=action.note,
-            at=datetime.utcnow()
+            at=datetime.utcnow(),
         )
     raise HTTPException(status_code=501, detail="Not implemented")
 
+
 @app.get("/v1/incidents/{incident_id}/brief", response_model=schemas.Brief)
 def get_incident_brief(incident_id: str, refresh: bool = False):
-    if IS_MOCK:
+    if _is_mock():
         detail = fixtures.get_incident_detail()
         if detail.brief:
             detail.brief.incident_id = incident_id
@@ -96,27 +203,36 @@ def get_incident_brief(incident_id: str, refresh: bool = False):
             text="Mock brief for incident",
             source="template",
             confidence_band="high",
-            generated_at=datetime.utcnow()
+            generated_at=datetime.utcnow(),
         )
     raise HTTPException(status_code=501, detail="Not implemented")
 
+
+# ---------------------------------------------------------------------------
+# Ops endpoints  (M3-01 mock only)
+# ---------------------------------------------------------------------------
+
+
 @app.get("/v1/drift", response_model=schemas.DriftReport)
 def get_drift():
-    if IS_MOCK:
+    if _is_mock():
         return fixtures.get_drift_report()
     raise HTTPException(status_code=501, detail="Not implemented")
 
+
 @app.get("/v1/metrics", response_model=schemas.LiveMetrics)
 def get_metrics():
-    if IS_MOCK:
+    if _is_mock():
         return fixtures.get_live_metrics()
     raise HTTPException(status_code=501, detail="Not implemented")
+
 
 class ReloadRequest(BaseModel):
     model_ref: str
 
+
 @app.post("/v1/admin/reload-model", response_model=schemas.ModelInfo)
 def reload_model(req: ReloadRequest):
-    if IS_MOCK:
+    if _is_mock():
         return fixtures.get_model_info()
     raise HTTPException(status_code=501, detail="Not implemented")
