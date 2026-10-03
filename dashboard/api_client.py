@@ -187,9 +187,19 @@ def get_incidents(
 def get_incident(incident_id: str) -> IncidentDetail:
     """GET /v1/incidents/{id} — full detail including SHAP, actions, brief."""
     if _OFFLINE:
-        detail = IncidentDetail.model_validate(_fixture("incident_detail"))
-        # The fixture has a single incident; return it regardless of the requested id.
-        return detail
+        detail_data = _fixture("incident_detail")
+        if incident_id and incident_id != detail_data.get("incident_id"):
+            page_data = _fixture("incident_page")
+            for item in page_data.get("items", []):
+                if item.get("incident_id") == incident_id:
+                    merged = dict(detail_data)
+                    merged.update(item)
+                    if merged.get("brief"):
+                        b = dict(merged["brief"])
+                        b["incident_id"] = incident_id
+                        merged["brief"] = b
+                    return IncidentDetail.model_validate(merged)
+        return IncidentDetail.model_validate(detail_data)
     return IncidentDetail.model_validate(_get(f"/v1/incidents/{incident_id}"))
 
 
