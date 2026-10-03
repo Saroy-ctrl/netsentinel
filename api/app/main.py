@@ -5,6 +5,7 @@ M3-02: SQLite schema and repository layer.
 M3-03: Real bundle loading at startup (MODEL_REF env var → load_bundle).
         /health, /v1/model, /v1/model/evaluation now served from the loaded Bundle
         when a bundle is present.  NS_MOCK=1 fallback is preserved for all paths.
+M3-04: Real POST /v1/flows — DetectionEngine → SHAP → persist to SQLite.
 """
 
 from __future__ import annotations
@@ -19,8 +20,11 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from api.app import fixtures
+from api.app.db import db_session
+from api.app.scoring import ScoringService
 from nscore.bundle.loader import Bundle, load_bundle
 from nscore.contracts import schemas
+from nscore.features.transform import MissingFeaturesError
 
 logger = logging.getLogger(__name__)
 
@@ -38,15 +42,17 @@ async def lifespan(app: FastAPI):
     try:
         bundle: Bundle = load_bundle(ref)
         app.state.bundle = bundle
-        logger.info("M3-03: bundle loaded — version=%s ref=%s", bundle.version, ref)
+        app.state.scorer = ScoringService(bundle)
+        logger.info("M3-03/04: bundle loaded — version=%s ref=%s", bundle.version, ref)
     except Exception as exc:
         # In mock-only CI the default path may not exist; log and continue so
         # NS_MOCK=1 tests still run.  Any other failure is re-raised so the
         # operator knows the bundle is broken.
         if os.environ.get("NS_MOCK") == "1":
             app.state.bundle = None
+            app.state.scorer = None
             logger.warning(
-                "M3-03: bundle load failed in mock mode (NS_MOCK=1), continuing without bundle. "
+                "M3-03/04: bundle load failed in mock mode (NS_MOCK=1), continuing without bundle. "
                 "Error: %s",
                 exc,
             )
@@ -54,6 +60,7 @@ async def lifespan(app: FastAPI):
             raise
     yield
     app.state.bundle = None
+    app.state.scorer = None
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +139,21 @@ def get_model_evaluation():
 
 @app.post("/v1/flows", response_model=schemas.ScoreBatchResponse)
 def score_flows(batch: schemas.FlowBatch, x_api_key: str | None = Header(None)):
+    # M3-04 real path — takes precedence when bundle / scorer is loaded
+    scorer: ScoringService | None = getattr(app.state, "scorer", None)
+    if scorer is not None:
+        try:
+            # Resolve DB path at request time so NS_DB_PATH overrides work in tests
+            _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
+            with db_session(_db_path) as conn:
+                return scorer.score_batch(batch, conn)
+        except MissingFeaturesError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Flow is missing required features: {', '.join(exc.missing)}",
+            ) from exc
+
+    # M3-01 mock path — preserved for NS_MOCK=1 when no bundle is loaded
     if _is_mock():
         result = fixtures.get_score_result()
         return schemas.ScoreBatchResponse(
@@ -140,7 +162,8 @@ def score_flows(batch: schemas.FlowBatch, x_api_key: str | None = Header(None)):
             incidents_created=1,
             incidents_updated=0,
         )
-    raise HTTPException(status_code=501, detail="Not implemented")
+
+    raise HTTPException(status_code=503, detail="Model bundle not loaded")
 
 
 # ---------------------------------------------------------------------------
