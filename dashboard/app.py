@@ -29,8 +29,11 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── late import (after path fix) ───────────────────────────────────────────────
+# ── late imports (after path fix) ──────────────────────────────────────────────
+import dashboard.theme as theme  # noqa: E402
 from dashboard.api_client import APIError, data_source_label, get_live_metrics, get_model_info  # noqa: E402
+
+theme.inject_css()
 
 # ---------------------------------------------------------------------------
 # Sidebar — analyst sign-in + data-source badge
@@ -70,28 +73,36 @@ with st.sidebar:
     # Live header metrics in sidebar
     try:
         metrics = get_live_metrics()
+        high_count = metrics.incidents_by_level.get("HIGH", 0)
+        med_count = metrics.incidents_by_level.get("MEDIUM", 0)
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Open", metrics.incidents_open)
-            st.metric("HIGH", metrics.incidents_by_level.get("HIGH", 0))
+            st.markdown(
+                f'<div style="font-size:0.78rem;color:#8B949E;margin-top:-12px">HIGH</div>'
+                f'<div style="font-size:1.4rem;font-weight:700;color:{theme.CLR_HIGH}">'
+                f"{high_count}</div>",
+                unsafe_allow_html=True,
+            )
         with col2:
             st.metric("flows/s", f"{metrics.flows_per_sec_1m:.0f}")
-            st.metric("MEDIUM", metrics.incidents_by_level.get("MEDIUM", 0))
+            st.markdown(
+                f'<div style="font-size:0.78rem;color:#8B949E;margin-top:-12px">MEDIUM</div>'
+                f'<div style="font-size:1.4rem;font-weight:700;color:{theme.CLR_MEDIUM}">'
+                f"{med_count}</div>",
+                unsafe_allow_html=True,
+            )
     except APIError as e:
         st.warning(f"⚠️ Metrics unavailable: {e}")
 
     st.markdown("---")
 
-    # Model info badge
+    # Model info badge — uses theme.bundle_badge
     try:
         model = get_model_info()
-        bundle_label = "2018" if model.feature_schema == "cic" else "LUFlow"
-        schema_color = "blue" if model.feature_schema == "cic" else "green"
-        st.markdown(
-            f"**Bundle:** `{model.model_version}`  \n"
-            f"**Schema:** :{schema_color}[{bundle_label}]  \n"
-            f"**family_head:** {'✅' if model.family_head else '❌'}"
-        )
+        st.markdown(theme.bundle_badge(model.feature_schema, model.model_version), unsafe_allow_html=True)
+        fh_icon = "✅" if model.family_head else "❌"
+        st.caption(f"family_head: {fh_icon} &nbsp;|&nbsp; FPR target: {model.operating_fpr_target:.1%}")
     except APIError as e:
         st.warning(f"⚠️ Model info unavailable: {e}")
 

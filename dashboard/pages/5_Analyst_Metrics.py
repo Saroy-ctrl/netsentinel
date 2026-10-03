@@ -2,10 +2,14 @@
 import streamlit as st
 
 st.set_page_config(page_title="Analyst Metrics · NetSentinel", page_icon="📈", layout="wide")
+
+import dashboard.theme as theme  # noqa: E402
+from dashboard.api_client import APIError, get_live_metrics  # noqa: E402
+
+theme.inject_css()
+
 st.title("📈 Analyst Metrics")
 st.info("Full implementation in M4-08.")
-
-from dashboard.api_client import APIError, get_live_metrics  # noqa: E402
 
 try:
     m = get_live_metrics()
