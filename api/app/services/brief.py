@@ -38,7 +38,9 @@ async def generate_and_cache_brief(
             if "Malicious" not in text:
                 text += " The behavior is classified as Malicious."
 
-        source = "llm"
+        # Stub generation (no model call yet): the contract only allows "azure_openai" or "template", and this is not
+        # Azure OpenAI. M5-03 replaces _mock_llm_generation with the grounded Azure client and sets "azure_openai".
+        source = "template"
         confidence_band = "high"
     except TimeoutError:
         text = (

@@ -1,5 +1,4 @@
 import os
-import sqlite3
 import sys
 
 # Add project root to path
@@ -20,7 +19,8 @@ CREATE TABLE IF NOT EXISTS incidents (
   mitre_id TEXT, mitre_name TEXT, risk_score INT, risk_level TEXT, severity REAL, max_confidence REAL,
   flow_count INT, src_ip TEXT, dst_ip TEXT, dst_port INT, first_seen TEXT, last_seen TEXT,
   top_features_json TEXT, brief_json TEXT, model_version TEXT,
-  acknowledged_at TEXT, updated_at TEXT
+  acknowledged_at TEXT, updated_at TEXT,
+  shap_n INT DEFAULT 0  -- flows whose SHAP contributions went into top_features_json (the running-mean denominator)
 );
 CREATE TABLE IF NOT EXISTS analyst_actions (
   action_id INTEGER PRIMARY KEY AUTOINCREMENT, incident_id TEXT REFERENCES incidents(incident_id),
@@ -40,6 +40,9 @@ def init_db(db_path: str = None):
     conn = get_connection(path)
     try:
         conn.executescript(SCHEMA)
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(incidents)")}
+        if "shap_n" not in cols:  # database created before shap_n existed
+            conn.execute("ALTER TABLE incidents ADD COLUMN shap_n INT DEFAULT 0")
         conn.commit()
         print(f"Database initialized at {path}")
     finally:

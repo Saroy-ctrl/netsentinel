@@ -58,6 +58,6 @@ async def test_brief_service_timeout_and_constraints(monkeypatch):
     # Test wording constraints
     incident_data = {"attack_family": "novel_anomaly", "verdict": "Malicious", "_test_timeout": False}
     brief = await generate_and_cache_brief("inc-2", incident_data, DummyRepo(), timeout=2.0)
-    assert brief.source == "llm"
+    assert brief.source == "template"  # stub generator; "azure_openai" arrives with M5-03
     assert "novel_anomaly" in brief.text
     assert "Malicious" in brief.text

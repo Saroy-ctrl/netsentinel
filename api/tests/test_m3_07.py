@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app.db import db_session, get_connection
-from api.app.main import app
+from api.app.main import ModelContext, app
 from scripts.init_db import init_db
 
 # ---------------------------------------------------------------------------
@@ -85,10 +85,8 @@ def client(tmp_path):
         conn.commit()
 
     # Inject state so lifespan bundle-load doesn't run (no bundle path configured)
-    prior_bundle = getattr(app.state, "bundle", None)
-    prior_scorer = getattr(app.state, "scorer", None)
-    app.state.bundle = None
-    app.state.scorer = None
+    prior_ctx = getattr(app.state, "model_ctx", None)
+    app.state.model_ctx = ModelContext(None, None, None)
 
     # Do NOT use TestClient as a context manager — that would invoke lifespan
     # which tries to load the ML bundle (no MODEL_REF set → load error → test crash).
@@ -98,8 +96,7 @@ def client(tmp_path):
     yield client
 
     # Restore
-    app.state.bundle = prior_bundle
-    app.state.scorer = prior_scorer
+    app.state.model_ctx = prior_ctx
     os.environ.pop("NS_DB_PATH", None)
 
 
@@ -348,7 +345,7 @@ class TestIncidentDetail:
 
 
 class TestActionHeaderEnforcement:
-    """X-Analyst header is mandatory; absence or empty string yields 422."""
+    """X-Analyst header is mandatory and must be 'Name + Role'; absence, empty or a bare name yields 422."""
 
     def test_missing_header_returns_422(self, client):
         res = client.post(
@@ -369,7 +366,7 @@ class TestActionHeaderEnforcement:
         res = client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert res.status_code == 200
 
@@ -377,10 +374,10 @@ class TestActionHeaderEnforcement:
         res = client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Charlie"},
+            headers={"X-Analyst": "Charlie + Analyst"},
         )
         assert res.status_code == 200
-        assert res.json()["analyst"] == "Charlie"
+        assert res.json()["analyst"] == "Charlie + Analyst"
 
 
 # ===========================================================================
@@ -395,7 +392,7 @@ class TestActionStatusTransitions:
         res = client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert res.status_code == 200
         assert res.json()["action"] == "acknowledge"
@@ -405,7 +402,7 @@ class TestActionStatusTransitions:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "escalate"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert _inc_row("inc_1")["status"] == "escalated"
 
@@ -413,7 +410,7 @@ class TestActionStatusTransitions:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "dismiss_fp"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert _inc_row("inc_1")["status"] == "dismissed_fp"
 
@@ -421,7 +418,7 @@ class TestActionStatusTransitions:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "resolve"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert _inc_row("inc_1")["status"] == "resolved"
 
@@ -430,7 +427,7 @@ class TestActionStatusTransitions:
         res = client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "acknowledge", "note": "test"},
-            headers={"X-Analyst": "Dave"},
+            headers={"X-Analyst": "Dave + Analyst"},
         )
         assert res.status_code == 200
         data = res.json()
@@ -452,7 +449,7 @@ class TestTerminalStateBlocking:
         res = client.post(
             "/v1/incidents/inc_3/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert res.status_code == 400
 
@@ -460,7 +457,7 @@ class TestTerminalStateBlocking:
         res = client.post(
             "/v1/incidents/inc_3/actions",
             json={"action": "escalate"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert "closed" in res.json()["detail"].lower()
 
@@ -469,14 +466,14 @@ class TestTerminalStateBlocking:
         r1 = client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "dismiss_fp"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert r1.status_code == 200
 
         r2 = client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert r2.status_code == 400
 
@@ -484,7 +481,7 @@ class TestTerminalStateBlocking:
         res = client.post(
             "/v1/incidents/ghost_inc/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert res.status_code == 404
 
@@ -501,7 +498,7 @@ class TestMTTATimestamp:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert _inc_row("inc_1")["acknowledged_at"] is not None
 
@@ -510,7 +507,7 @@ class TestMTTATimestamp:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         ack_ts = _inc_row("inc_1")["acknowledged_at"]
         assert ack_ts is not None
@@ -518,7 +515,7 @@ class TestMTTATimestamp:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "escalate"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert _inc_row("inc_1")["acknowledged_at"] == ack_ts
 
@@ -528,7 +525,7 @@ class TestMTTATimestamp:
         client.post(
             "/v1/incidents/inc_2/actions",
             json={"action": "escalate"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert _inc_row("inc_2")["acknowledged_at"] == before
 
@@ -537,7 +534,7 @@ class TestMTTATimestamp:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "escalate"},
-            headers={"X-Analyst": "Bob"},
+            headers={"X-Analyst": "Bob + Analyst"},
         )
         assert _inc_row("inc_1")["acknowledged_at"] is None
 
@@ -554,11 +551,11 @@ class TestAuditLogInsertion:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "acknowledge", "note": "checking"},
-            headers={"X-Analyst": "Eve"},
+            headers={"X-Analyst": "Eve + Analyst"},
         )
         rows = _audit_rows("inc_1")
         assert len(rows) == 1
-        assert rows[0]["analyst"] == "Eve"
+        assert rows[0]["analyst"] == "Eve + Analyst"
         assert rows[0]["action"] == "acknowledge"
         assert rows[0]["note"] == "checking"
 
@@ -567,7 +564,7 @@ class TestAuditLogInsertion:
             client.post(
                 "/v1/incidents/inc_1/actions",
                 json={"action": action},
-                headers={"X-Analyst": "Frank"},
+                headers={"X-Analyst": "Frank + Analyst"},
             )
         rows = _audit_rows("inc_1")
         assert [r["action"] for r in rows] == ["acknowledge", "escalate"]
@@ -576,7 +573,7 @@ class TestAuditLogInsertion:
         client.post(
             "/v1/incidents/inc_1/actions",
             json={"action": "resolve"},
-            headers={"X-Analyst": "Grace"},
+            headers={"X-Analyst": "Grace + Analyst"},
         )
         rows = _audit_rows("inc_1")
         assert len(rows) == 1
@@ -588,6 +585,6 @@ class TestAuditLogInsertion:
         client.post(
             "/v1/incidents/inc_3/actions",
             json={"action": "acknowledge"},
-            headers={"X-Analyst": "Hank"},
+            headers={"X-Analyst": "Hank + Analyst"},
         )
         assert len(_audit_rows("inc_3")) == before

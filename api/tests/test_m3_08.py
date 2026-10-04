@@ -37,7 +37,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app.db import db_session, get_connection
-from api.app.main import app
+from api.app.main import ModelContext, app
+from api.tests.helpers import AUTH_HEADERS
 from nscore.bundle.loader import load_bundle
 from nscore.contracts import schemas
 from scripts.init_db import init_db
@@ -99,25 +100,19 @@ def drift_client(real_bundle, db_path: str):
     from api.app.scoring import ScoringService
     from api.app.services.drift import DriftMonitor
 
-    prior_bundle = getattr(app.state, "bundle", None)
-    prior_scorer = getattr(app.state, "scorer", None)
-    prior_monitor = getattr(app.state, "drift_monitor", None)
+    prior_ctx = getattr(app.state, "model_ctx", None)
 
     dm = DriftMonitor(real_bundle, db_path)
-    app.state.bundle = real_bundle
-    app.state.scorer = ScoringService(real_bundle)
-    app.state.drift_monitor = dm
+    app.state.model_ctx = ModelContext(real_bundle, ScoringService(real_bundle), dm)
 
     prev_db = os.environ.get("NS_DB_PATH")
     os.environ["NS_DB_PATH"] = db_path
     os.environ.pop("NS_MOCK", None)
 
-    client = TestClient(app, raise_server_exceptions=True)
+    client = TestClient(app, raise_server_exceptions=True, headers=AUTH_HEADERS)
     yield client, dm, db_path
 
-    app.state.bundle = prior_bundle
-    app.state.scorer = prior_scorer
-    app.state.drift_monitor = prior_monitor
+    app.state.model_ctx = prior_ctx
     if prev_db is not None:
         os.environ["NS_DB_PATH"] = prev_db
     else:
@@ -567,12 +562,8 @@ class TestMockModePreserved:
         # test_mock_api.py already covers this; snapshot here for clarity
         os.environ["NS_MOCK"] = "1"
         try:
-            prior_bundle = getattr(app.state, "bundle", None)
-            prior_scorer = getattr(app.state, "scorer", None)
-            prior_monitor = getattr(app.state, "drift_monitor", None)
-            app.state.bundle = None
-            app.state.scorer = None
-            app.state.drift_monitor = None
+            prior_ctx = getattr(app.state, "model_ctx", None)
+            app.state.model_ctx = ModelContext(None, None, None)
 
             client = TestClient(app, raise_server_exceptions=True)
             resp = client.get("/v1/drift")
@@ -580,20 +571,14 @@ class TestMockModePreserved:
             schemas.DriftReport.model_validate(resp.json())
         finally:
             os.environ.pop("NS_MOCK", None)
-            app.state.bundle = prior_bundle
-            app.state.scorer = prior_scorer
-            app.state.drift_monitor = prior_monitor
+            app.state.model_ctx = prior_ctx
 
     def test_get_metrics_mock_returns_200(self):
         """NS_MOCK=1 client must return the fixture LiveMetrics."""
         os.environ["NS_MOCK"] = "1"
         try:
-            prior_bundle = getattr(app.state, "bundle", None)
-            prior_scorer = getattr(app.state, "scorer", None)
-            prior_monitor = getattr(app.state, "drift_monitor", None)
-            app.state.bundle = None
-            app.state.scorer = None
-            app.state.drift_monitor = None
+            prior_ctx = getattr(app.state, "model_ctx", None)
+            app.state.model_ctx = ModelContext(None, None, None)
 
             client = TestClient(app, raise_server_exceptions=True)
             resp = client.get("/v1/metrics")
@@ -601,6 +586,4 @@ class TestMockModePreserved:
             schemas.LiveMetrics.model_validate(resp.json())
         finally:
             os.environ.pop("NS_MOCK", None)
-            app.state.bundle = prior_bundle
-            app.state.scorer = prior_scorer
-            app.state.drift_monitor = prior_monitor
+            app.state.model_ctx = prior_ctx

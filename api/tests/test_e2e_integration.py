@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app.main import app
+from api.tests.helpers import one_flow_batch
 
 client = TestClient(app)
 
@@ -15,16 +16,7 @@ def test_client(monkeypatch):
 
 def test_full_pipeline_lifecycle(test_client):
     # 1. Ingest
-    malicious_flow = {
-        "flow_id": "flow-999",
-        "src_ip": "10.0.0.1",
-        "dst_ip": "192.168.1.100",
-        "src_port": 12345,
-        "dst_port": 80,
-        "protocol": 6,
-        "features": {"fwd_packet_length_max": 1500, "bwd_packet_length_max": 1500, "flow_duration": 10}
-    }
-    batch = {"flows": [malicious_flow]}
+    batch = one_flow_batch("flow-999")
     
     response = test_client.post("/v1/flows", json=batch, headers={"x-api-key": "test_api_key"})
     assert response.status_code == 200
@@ -66,7 +58,7 @@ def test_adverse_paths(test_client):
     assert response.status_code == 422
     
     # Missing API Key
-    response = test_client.post("/v1/flows", json={"flows": []})
+    response = test_client.post("/v1/flows", json=one_flow_batch())
     assert response.status_code == 403
 
     # Invalid Analyst Header

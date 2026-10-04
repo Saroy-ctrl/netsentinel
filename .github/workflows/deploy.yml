@@ -1,0 +1,47 @@
+name: deploy
+
+# Manual only: needs the Azure secrets below and a provisioned resource group / registry (infra/ACA_README.md).
+# It used to run on every push to main, where it would fail without those secrets.
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-azure:
+    name: Deploy to Azure Container Apps
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          
+      - name: Login to ACR
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          
+      - name: Build and Push API Image
+        run: |
+          docker build -f Dockerfile.api -t ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-api:${{ github.sha }} .
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-api:${{ github.sha }}
+          
+      - name: Build and Push Dashboard Image
+        run: |
+          docker build -f Dockerfile.dashboard -t ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-dashboard:${{ github.sha }} .
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-dashboard:${{ github.sha }}
+          
+      - name: Deploy API to ACA
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          resourceGroup: ${{ secrets.AZURE_RG }}
+          containerAppName: netsentinel-api
+          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-api:${{ github.sha }}
+          
+      - name: Deploy Dashboard to ACA
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          resourceGroup: ${{ secrets.AZURE_RG }}
+          containerAppName: netsentinel-dashboard
+          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-dashboard:${{ github.sha }}

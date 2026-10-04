@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app.correlator import IncidentCorrelator
+from api.tests.helpers import AUTH_HEADERS
 from nscore.bundle.loader import load_bundle
 from nscore.contracts import policy
 from nscore.contracts.schemas import AttackFamily, FlowMeta, Verdict
@@ -53,27 +54,24 @@ def db_conn(tmp_path: Path):
 @pytest.fixture()
 def scoring_client(real_bundle, tmp_path: Path):
     """TestClient with real bundle and isolated DB injected."""
-    from api.app.main import app
+    from api.app.main import ModelContext, app
     from api.app.scoring import ScoringService
     from scripts.init_db import init_db
 
     db_file = str(tmp_path / "m306_api.db")
     init_db(db_file)
 
-    prior_bundle = getattr(app.state, "bundle", None)
-    prior_scorer = getattr(app.state, "scorer", None)
+    prior_ctx = getattr(app.state, "model_ctx", None)
 
-    app.state.bundle = real_bundle
-    app.state.scorer = ScoringService(real_bundle)
+    app.state.model_ctx = ModelContext(real_bundle, ScoringService(real_bundle), None)
 
     prev_db = os.environ.get("NS_DB_PATH")
     os.environ["NS_DB_PATH"] = db_file
 
-    client = TestClient(app, raise_server_exceptions=True)
+    client = TestClient(app, raise_server_exceptions=True, headers=AUTH_HEADERS)
     yield client, db_file
 
-    app.state.bundle = prior_bundle
-    app.state.scorer = prior_scorer
+    app.state.model_ctx = prior_ctx
     if prev_db is not None:
         os.environ["NS_DB_PATH"] = prev_db
     else:

@@ -1,11 +1,14 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements-api.txt .
+# requirements-api.txt installs the project itself (-e .), so the sources must be present first
+COPY . .
 RUN pip install --no-cache-dir -r requirements-api.txt
 
-COPY . .
+# A hash-verified mock bundle so the container starts with no model registry or data. Real deployments set
+# MODEL_REF to a real bundle: local:<path> (mounted volume) or azureml:<name>[:<version>|@latest].
+RUN python scripts/make_mock_bundle.py
 
 EXPOSE 8000
 CMD ["uvicorn", "api.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
