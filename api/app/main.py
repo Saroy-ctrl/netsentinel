@@ -14,7 +14,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
@@ -23,6 +23,7 @@ from pydantic import BaseModel
 from api.app import fixtures
 from api.app.db import db_session
 from api.app.scoring import ScoringService
+from api.app.services.drift import DriftMonitor
 from nscore.bundle.loader import Bundle, load_bundle
 from nscore.contracts import schemas
 from nscore.features.transform import MissingFeaturesError
@@ -44,6 +45,9 @@ async def lifespan(app: FastAPI):
         bundle: Bundle = load_bundle(ref)
         app.state.bundle = bundle
         app.state.scorer = ScoringService(bundle)
+        # M3-08: attach drift monitor (uses NS_DB_PATH resolved at startup time)
+        _startup_db = os.environ.get("NS_DB_PATH", "netsentinel.db")
+        app.state.drift_monitor = DriftMonitor(bundle, _startup_db)
         logger.info("M3-03/04: bundle loaded — version=%s ref=%s", bundle.version, ref)
     except Exception as exc:
         # In mock-only CI the default path may not exist; log and continue so
@@ -52,6 +56,7 @@ async def lifespan(app: FastAPI):
         if os.environ.get("NS_MOCK") == "1":
             app.state.bundle = None
             app.state.scorer = None
+            app.state.drift_monitor = None
             logger.warning(
                 "M3-03/04: bundle load failed in mock mode (NS_MOCK=1), continuing without bundle. "
                 "Error: %s",
@@ -62,6 +67,7 @@ async def lifespan(app: FastAPI):
     yield
     app.state.bundle = None
     app.state.scorer = None
+    app.state.drift_monitor = None
 
 
 # ---------------------------------------------------------------------------
@@ -155,8 +161,9 @@ def score_flows(batch: schemas.FlowBatch, x_api_key: str | None = Header(None)):
         try:
             # Resolve DB path at request time so NS_DB_PATH overrides work in tests
             _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
+            drift_monitor = getattr(app.state, "drift_monitor", None)
             with db_session(_db_path) as conn:
-                return scorer.score_batch(batch, conn)
+                return scorer.score_batch(batch, conn, drift_monitor=drift_monitor)
         except MissingFeaturesError as exc:
             raise HTTPException(
                 status_code=422,
@@ -306,7 +313,10 @@ def add_incident_action(
 
     _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
     with db_session(_db_path) as conn:
-        row = conn.execute("SELECT status, acknowledged_at FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
+        row = conn.execute(
+            "SELECT status, acknowledged_at FROM incidents WHERE incident_id = ?", 
+            (incident_id,)
+        ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Incident not found")
             
@@ -324,8 +334,7 @@ def add_incident_action(
         elif action.action == "resolve":
             new_status = "resolved"
             
-        from datetime import timezone
-        now_str = datetime.now(timezone.utc).isoformat()
+        now_str = datetime.now(UTC).isoformat()
         
         update_query = "UPDATE incidents SET status = ?, updated_at = ?"
         update_params = [new_status, now_str]
@@ -383,14 +392,102 @@ def get_incident_brief(incident_id: str, refresh: bool = False):
 def get_drift():
     if _is_mock():
         return fixtures.get_drift_report()
-    raise HTTPException(status_code=501, detail="Not implemented")
+
+    monitor = getattr(app.state, "drift_monitor", None)
+    if monitor is not None:
+        report = monitor.get_latest_report()
+        if report is not None:
+            return report
+
+    raise HTTPException(status_code=404, detail="No drift snapshot available yet")
 
 
 @app.get("/v1/metrics", response_model=schemas.LiveMetrics)
 def get_metrics():
     if _is_mock():
         return fixtures.get_live_metrics()
-    raise HTTPException(status_code=501, detail="Not implemented")
+
+
+    import numpy as np
+
+    _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
+    with db_session(_db_path) as conn:
+        # -- Throughput -------------------------------------------------------
+        flows_total: int = conn.execute(
+            "SELECT COUNT(*) FROM flows"
+        ).fetchone()[0]
+
+        flows_last_60s: int = conn.execute(
+            "SELECT COUNT(*) FROM flows "
+            "WHERE received_at >= datetime('now', '-60 seconds')"
+        ).fetchone()[0]
+        flows_per_sec: float = flows_last_60s / 60.0
+
+        # -- Latency percentiles ----------------------------------------------
+        lat_rows = conn.execute(
+            "SELECT latency_ms FROM flows WHERE latency_ms IS NOT NULL"
+        ).fetchall()
+        if lat_rows:
+            lat_arr = np.array([r[0] for r in lat_rows], dtype=np.float64)
+            p50 = float(np.percentile(lat_arr, 50))
+            p95 = float(np.percentile(lat_arr, 95))
+        else:
+            p50, p95 = 0.0, 0.0
+
+        # -- Open incidents ---------------------------------------------------
+        open_rows = conn.execute(
+            "SELECT risk_level FROM incidents "
+            "WHERE status NOT IN ('resolved', 'dismissed_fp')"
+        ).fetchall()
+        incidents_open: int = len(open_rows)
+        by_level: dict[str, int] = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        for r in open_rows:
+            lv = r[0]
+            if lv in by_level:
+                by_level[lv] += 1
+
+        # -- Analyst-confirmed precision & FP dismiss rate --------------------
+        reviewed = conn.execute(
+            "SELECT action FROM analyst_actions "
+            "WHERE action IN ('confirm', 'dismiss_fp')"
+        ).fetchall()
+        confirmed = sum(1 for r in reviewed if r[0] == "confirm")
+        dismissed_fp = sum(1 for r in reviewed if r[0] == "dismiss_fp")
+        total_reviewed = confirmed + dismissed_fp
+        precision: float | None = confirmed / total_reviewed if total_reviewed else None
+        fp_rate: float | None = dismissed_fp / total_reviewed if total_reviewed else None
+
+        # -- MTTA (mean time to acknowledge in seconds) -----------------------
+        mtta_rows = conn.execute(
+            "SELECT first_seen, acknowledged_at FROM incidents "
+            "WHERE acknowledged_at IS NOT NULL AND first_seen IS NOT NULL"
+        ).fetchall()
+        mtta: float | None = None
+        if mtta_rows:
+            from datetime import datetime as _dt
+            deltas: list[float] = []
+            for r in mtta_rows:
+                try:
+                    fs = _dt.fromisoformat(r[0].replace("Z", "+00:00"))
+                    ack = _dt.fromisoformat(r[1].replace("Z", "+00:00"))
+                    delta = (ack - fs).total_seconds()
+                    if delta >= 0:
+                        deltas.append(delta)
+                except Exception:
+                    pass
+            mtta = float(np.mean(deltas)) if deltas else None
+
+    return schemas.LiveMetrics(
+        flows_scored_total=flows_total,
+        flows_per_sec_1m=flows_per_sec,
+        latency_ms_p50=p50,
+        latency_ms_p95=p95,
+        incidents_open=incidents_open,
+        incidents_by_level=by_level,
+        analyst_confirmed_precision=precision,
+        fp_dismiss_rate=fp_rate,
+        mtta_seconds=mtta,
+    )
 
 
 class ReloadRequest(BaseModel):

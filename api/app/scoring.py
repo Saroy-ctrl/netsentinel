@@ -67,6 +67,7 @@ class ScoringService:
         self,
         batch: schemas.FlowBatch,
         conn,  # sqlite3.Connection from db_session
+        drift_monitor=None,  # DriftMonitor | None — optional, avoids circular import
     ) -> schemas.ScoreBatchResponse:
         """Score a FlowBatch, persist to DB, return ScoreBatchResponse."""
         flow_records = batch.flows
@@ -173,6 +174,11 @@ class ScoringService:
                     latency_ms=per_flow_latency_ms,
                 )
             )
+
+        # Feed transformed matrix into the drift monitor (M3-08)
+        if drift_monitor is not None and det.X is not None:
+            verdict_strs = [det.verdict[i].value for i in range(len(flow_records))]
+            drift_monitor.observe(det.X, verdict_strs)
 
         conn.commit()
 
