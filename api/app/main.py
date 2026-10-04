@@ -14,6 +14,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,8 +22,10 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 from api.app import fixtures
-from api.app.db import db_session
+from api.app.db import db_session, get_connection
+from api.app.repository import Repository
 from api.app.scoring import ScoringService
+from api.app.services.brief import generate_and_cache_brief
 from api.app.services.drift import DriftMonitor
 from nscore.bundle.loader import Bundle, load_bundle
 from nscore.contracts import schemas
@@ -37,26 +40,26 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MODEL_REF = "local:artifacts/bundles/mock-cic"
 
 
+@dataclass
+class ModelContext:
+    bundle: Bundle | None = None
+    scorer: ScoringService | None = None
+    drift_monitor: DriftMonitor | None = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Load the model bundle at startup; clear it on shutdown."""
     ref = os.environ.get("MODEL_REF", _DEFAULT_MODEL_REF)
     try:
         bundle: Bundle = load_bundle(ref)
-        app.state.bundle = bundle
-        app.state.scorer = ScoringService(bundle)
-        # M3-08: attach drift monitor (uses NS_DB_PATH resolved at startup time)
+        scorer = ScoringService(bundle)
         _startup_db = os.environ.get("NS_DB_PATH", "netsentinel.db")
-        app.state.drift_monitor = DriftMonitor(bundle, _startup_db)
+        drift_monitor = DriftMonitor(bundle, _startup_db)
+        app.state.model_ctx = ModelContext(bundle, scorer, drift_monitor)
         logger.info("M3-03/04: bundle loaded — version=%s ref=%s", bundle.version, ref)
     except Exception as exc:
-        # In mock-only CI the default path may not exist; log and continue so
-        # NS_MOCK=1 tests still run.  Any other failure is re-raised so the
-        # operator knows the bundle is broken.
         if os.environ.get("NS_MOCK") == "1":
-            app.state.bundle = None
-            app.state.scorer = None
-            app.state.drift_monitor = None
+            app.state.model_ctx = ModelContext()
             logger.warning(
                 "M3-03/04: bundle load failed in mock mode (NS_MOCK=1), continuing without bundle. "
                 "Error: %s",
@@ -65,9 +68,7 @@ async def lifespan(app: FastAPI):
         else:
             raise
     yield
-    app.state.bundle = None
-    app.state.scorer = None
-    app.state.drift_monitor = None
+    app.state.model_ctx = ModelContext()
 
 
 # ---------------------------------------------------------------------------
@@ -82,7 +83,8 @@ def _is_mock() -> bool:
     if os.environ.get("NS_MOCK") == "1":
         return True
     
-    if getattr(app.state, "bundle", None) is not None:
+    ctx = getattr(app.state, "model_ctx", None)
+    if ctx and ctx.bundle is not None:
         return False
         
     db_path = os.environ.get("NS_DB_PATH")
@@ -93,10 +95,8 @@ def _is_mock() -> bool:
 
 def _bundle() -> Bundle | None:
     """Return the loaded Bundle, or None if not yet available."""
-    try:
-        return app.state.bundle
-    except AttributeError:
-        return None
+    ctx = getattr(app.state, "model_ctx", None)
+    return ctx.bundle if ctx else None
 
 
 # ---------------------------------------------------------------------------
@@ -156,12 +156,13 @@ def get_model_evaluation():
 @app.post("/v1/flows", response_model=schemas.ScoreBatchResponse)
 def score_flows(batch: schemas.FlowBatch, x_api_key: str | None = Header(None)):
     # M3-04 real path — takes precedence when bundle / scorer is loaded
-    scorer: ScoringService | None = getattr(app.state, "scorer", None)
+    ctx = getattr(app.state, "model_ctx", None)
+    scorer = ctx.scorer if ctx else None
     if scorer is not None:
         try:
             # Resolve DB path at request time so NS_DB_PATH overrides work in tests
             _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
-            drift_monitor = getattr(app.state, "drift_monitor", None)
+            drift_monitor = ctx.drift_monitor if ctx else None
             with db_session(_db_path) as conn:
                 return scorer.score_batch(batch, conn, drift_monitor=drift_monitor)
         except MissingFeaturesError as exc:
@@ -367,7 +368,7 @@ def add_incident_action(
 
 
 @app.get("/v1/incidents/{incident_id}/brief", response_model=schemas.Brief)
-def get_incident_brief(incident_id: str, refresh: bool = False):
+async def get_incident_brief(incident_id: str, refresh: bool = False):
     if _is_mock():
         detail = fixtures.get_incident_detail()
         if detail.brief:
@@ -380,7 +381,19 @@ def get_incident_brief(incident_id: str, refresh: bool = False):
             confidence_band="high",
             generated_at=datetime.utcnow(),
         )
-    raise HTTPException(status_code=501, detail="Not implemented")
+
+    _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
+    with db_session(_db_path) as conn:
+        repo = Repository(conn)
+        row = repo.get_incident(incident_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        
+        incident_data = dict(row)
+        
+    # We generate/cache outside the with-block to not hold DB connection during LLM wait
+    brief = await generate_and_cache_brief(incident_id, incident_data, Repository(get_connection(_db_path)), refresh)
+    return brief
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +406,8 @@ def get_drift():
     if _is_mock():
         return fixtures.get_drift_report()
 
-    monitor = getattr(app.state, "drift_monitor", None)
+    ctx = getattr(app.state, "model_ctx", None)
+    monitor = ctx.drift_monitor if ctx else getattr(app.state, "drift_monitor", None)
     if monitor is not None:
         report = monitor.get_latest_report()
         if report is not None:
@@ -495,7 +509,20 @@ class ReloadRequest(BaseModel):
 
 
 @app.post("/v1/admin/reload-model", response_model=schemas.ModelInfo)
-def reload_model(req: ReloadRequest):
+def reload_model(req: ReloadRequest, x_admin_key: str | None = Header(None)):
+    expected_key = os.environ.get("NS_ADMIN_KEY", "admin_secret")
+    if x_admin_key != expected_key:
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid or missing Admin API key")
+
     if _is_mock():
         return fixtures.get_model_info()
-    raise HTTPException(status_code=501, detail="Not implemented")
+
+    try:
+        new_bundle = load_bundle(req.model_ref)
+        new_scorer = ScoringService(new_bundle)
+        _startup_db = os.environ.get("NS_DB_PATH", "netsentinel.db")
+        new_monitor = DriftMonitor(new_bundle, _startup_db)
+        app.state.model_ctx = ModelContext(new_bundle, new_scorer, new_monitor)
+        return new_bundle.model_info()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

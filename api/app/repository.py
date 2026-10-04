@@ -21,6 +21,11 @@ class Repository:
         query = f"UPDATE incidents SET {set_clause} WHERE incident_id = ?"
         self.conn.execute(query, tuple(data.values()) + (incident_id,))
 
+    def update_incident_brief(self, incident_id: str, brief_json: str):
+        query = "UPDATE incidents SET brief_json = ? WHERE incident_id = ?"
+        self.conn.execute(query, (brief_json, incident_id))
+        self.conn.commit()
+
     def list_incidents(self, status: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[sqlite3.Row]:
         query = "SELECT * FROM incidents"
         params = []
