@@ -197,6 +197,8 @@ class IncidentCorrelator:
 
                 # Recompute risk score with burst factor for updated flow_count
                 eff_verdict = Verdict(inc_verdict_str)
+                eff_family = AttackFamily(inc_family_str)
+                mitre_id, mitre_name = policy.mitre_for(eff_family)
                 new_risk_score = policy.risk_score(
                     eff_verdict,
                     new_max_conf,
@@ -214,6 +216,8 @@ class IncidentCorrelator:
                         severity = ?,
                         last_seen = ?,
                         top_features_json = ?,
+                        mitre_id = ?,
+                        mitre_name = ?,
                         risk_score = ?,
                         risk_level = ?,
                         updated_at = ?
@@ -225,6 +229,8 @@ class IncidentCorrelator:
                         new_severity,
                         new_last_seen_str,
                         new_top_json,
+                        mitre_id,
+                        mitre_name,
                         new_risk_score,
                         new_risk_level,
                         now_str,
