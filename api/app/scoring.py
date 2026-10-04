@@ -20,9 +20,9 @@ from __future__ import annotations
 import json
 import logging
 import time
-import uuid
 from datetime import UTC, datetime
 
+from api.app.correlator import IncidentCorrelator
 from nscore.bundle.loader import Bundle
 from nscore.contracts import policy, schemas
 from nscore.contracts.schemas import AttackFamily, Verdict
@@ -56,6 +56,7 @@ class ScoringService:
         self.bundle = bundle
         self.engine = DetectionEngine(bundle)
         self.explainer = _try_build_explainer(bundle)
+        self.correlator = IncidentCorrelator()
         self.model_version = bundle.version
 
     # ------------------------------------------------------------------
@@ -128,8 +129,7 @@ class ScoringService:
             incident_id: str | None = None
 
             if v is not Verdict.BENIGN:
-                # Minimal incident stub for M3-04 (full correlator in M3-05)
-                incident_id, inc_created, inc_updated = _upsert_minimal_incident(
+                incident_id, inc_created, inc_updated = self.correlator.correlate_flow(
                     conn=conn,
                     meta=meta,
                     verdict=v,
@@ -235,54 +235,3 @@ def _persist_flow(
             latency_ms,
         ),
     )
-
-
-def _upsert_minimal_incident(
-    *,
-    conn,
-    meta: schemas.FlowMeta,
-    verdict: Verdict,
-    family: AttackFamily,
-    confidence: float,
-    severity: float,
-    model_version: str,
-    top_features: list[schemas.FeatureContribution],
-) -> tuple[str, int, int]:
-    """Create or update a minimal incident row.
-
-    M3-04 scope: each non-benign flow gets its own incident (keyed on flow_id
-    for uniqueness). The real windowed correlator (key = src_ip,dst_ip,family,
-    5-min window) is M3-05's responsibility.
-
-    Returns (incident_id, created, updated).
-    """
-    mitre_id, mitre_name = policy.mitre_for(family)
-    rs = policy.risk_score(verdict, confidence, severity, flow_count=1)
-    rl = policy.risk_level(rs)
-    now = _now_iso()
-    top_json = json.dumps(
-        [fc.model_dump(mode="json") for fc in top_features]
-    )
-
-    # Key: one incident per flow in M3-04 (M3-05 will merge by correlation window)
-    incident_id = f"INC-{uuid.uuid4().hex[:12].upper()}"
-
-    conn.execute(
-        """
-        INSERT INTO incidents (
-            incident_id, status, verdict, attack_family,
-            mitre_id, mitre_name, risk_score, risk_level, severity, max_confidence,
-            flow_count, src_ip, dst_ip, dst_port,
-            first_seen, last_seen,
-            top_features_json, model_version, updated_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """,
-        (
-            incident_id, "new", verdict.value, family.value,
-            mitre_id, mitre_name, rs, rl, severity, confidence,
-            1, meta.src_ip, meta.dst_ip, meta.dst_port,
-            meta.observed_at.isoformat(), meta.observed_at.isoformat(),
-            top_json, model_version, now,
-        ),
-    )
-    return incident_id, 1, 0
