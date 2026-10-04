@@ -13,12 +13,17 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import time
+import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from api.app import fixtures
@@ -72,10 +77,77 @@ async def lifespan(app: FastAPI):
 
 
 # ---------------------------------------------------------------------------
-# App
+# App & Middleware
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="NetSentinel API", version="0.1.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.middleware("http")
+async def structured_logging_middleware(request: Request, call_next):
+    req_id = uuid.uuid4().hex
+    start_time = time.perf_counter()
+    
+    response = await call_next(request)
+    
+    duration = time.perf_counter() - start_time
+    
+    log_data = {
+        "request_id": req_id,
+        "method": request.method,
+        "url": str(request.url),
+        "status_code": response.status_code,
+        "duration_ms": round(duration * 1000, 2)
+    }
+    logger.info(json.dumps(log_data))
+    
+    response.headers["X-Request-ID"] = req_id
+    return response
+
+@app.exception_handler(MissingFeaturesError)
+async def missing_features_handler(request: Request, exc: MissingFeaturesError):
+    errors = [
+        {
+            "loc": ["body", "flows", feat],
+            "msg": f"Missing required feature: {feat}",
+            "type": "value_error.missing"
+        }
+        for feat in exc.missing
+    ]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
+# ---------------------------------------------------------------------------
+# Auth Dependencies
+# ---------------------------------------------------------------------------
+
+def verify_api_key(x_api_key: str | None = Header(None)):
+    if _is_mock():
+        return x_api_key or "mock_key"
+    expected_key = os.environ.get("NS_API_KEY", "test_api_key")
+    if not x_api_key or x_api_key != expected_key:
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid or missing API key")
+    return x_api_key
+
+def verify_admin_key(x_admin_key: str | None = Header(None)):
+    expected_key = os.environ.get("NS_ADMIN_KEY", "admin_secret")
+    if not x_admin_key or x_admin_key != expected_key:
+        raise HTTPException(status_code=403, detail="Forbidden: Invalid or missing Admin API key")
+    return x_admin_key
+
+def verify_analyst(x_analyst: str | None = Header(None)):
+    if not x_analyst:
+        raise HTTPException(status_code=422, detail="X-Analyst header is required")
+    if not re.match(r"^[\w\s\-]+\+[\w\s\-]+$", x_analyst):
+        raise HTTPException(status_code=422, detail="X-Analyst must be in 'Name + Role' format")
+    return x_analyst
 
 
 def _is_mock() -> bool:
@@ -154,22 +226,16 @@ def get_model_evaluation():
 
 
 @app.post("/v1/flows", response_model=schemas.ScoreBatchResponse)
-def score_flows(batch: schemas.FlowBatch, x_api_key: str | None = Header(None)):
+def score_flows(batch: schemas.FlowBatch, x_api_key: str = Depends(verify_api_key)):
     # M3-04 real path — takes precedence when bundle / scorer is loaded
     ctx = getattr(app.state, "model_ctx", None)
     scorer = ctx.scorer if ctx else None
     if scorer is not None:
-        try:
-            # Resolve DB path at request time so NS_DB_PATH overrides work in tests
-            _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
-            drift_monitor = ctx.drift_monitor if ctx else None
-            with db_session(_db_path) as conn:
-                return scorer.score_batch(batch, conn, drift_monitor=drift_monitor)
-        except MissingFeaturesError as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Flow is missing required features: {', '.join(exc.missing)}",
-            ) from exc
+        # Resolve DB path at request time so NS_DB_PATH overrides work in tests
+        _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
+        drift_monitor = ctx.drift_monitor if ctx else None
+        with db_session(_db_path) as conn:
+            return scorer.score_batch(batch, conn, drift_monitor=drift_monitor)
 
     # M3-01 mock path — preserved for NS_MOCK=1 when no bundle is loaded
     if _is_mock():
@@ -297,11 +363,8 @@ def get_incident(incident_id: str):
 def add_incident_action(
     incident_id: str,
     action: schemas.AnalystActionIn,
-    x_analyst: str | None = Header(None),
+    x_analyst: str = Depends(verify_analyst),
 ):
-    if not x_analyst:
-        raise HTTPException(status_code=422, detail="X-Analyst header is required")
-
     if _is_mock():
         return schemas.AnalystActionRecord(
             action_id=1,
@@ -509,11 +572,7 @@ class ReloadRequest(BaseModel):
 
 
 @app.post("/v1/admin/reload-model", response_model=schemas.ModelInfo)
-def reload_model(req: ReloadRequest, x_admin_key: str | None = Header(None)):
-    expected_key = os.environ.get("NS_ADMIN_KEY", "admin_secret")
-    if x_admin_key != expected_key:
-        raise HTTPException(status_code=403, detail="Forbidden: Invalid or missing Admin API key")
-
+def reload_model(req: ReloadRequest, x_admin_key: str = Depends(verify_admin_key)):
     if _is_mock():
         return fixtures.get_model_info()
 
