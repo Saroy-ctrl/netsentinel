@@ -53,7 +53,7 @@ def real_bundle(mock_bundle_path: Path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def bundle_client(real_bundle):
     """
     Return a TestClient backed by the real (mock-cic) bundle.

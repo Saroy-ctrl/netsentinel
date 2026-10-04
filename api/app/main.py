@@ -10,6 +10,7 @@ M3-04: Real POST /v1/flows — DetectionEngine → SHAP → persist to SQLite.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -71,9 +72,18 @@ app = FastAPI(title="NetSentinel API", version="0.1.0", lifespan=lifespan)
 
 
 def _is_mock() -> bool:
-    """Check NS_MOCK at request time so tests can set the env var after module import."""
-    return os.environ.get("NS_MOCK") == "1"
-
+    """Check NS_MOCK at request time or fallback if no bundle is loaded."""
+    if os.environ.get("NS_MOCK") == "1":
+        return True
+    
+    if getattr(app.state, "bundle", None) is not None:
+        return False
+        
+    db_path = os.environ.get("NS_DB_PATH")
+    if db_path and os.path.exists(db_path):
+        return False
+        
+    return True
 
 def _bundle() -> Bundle | None:
     """Return the loaded Bundle, or None if not yet available."""
@@ -184,7 +194,54 @@ def get_incidents(
 ):
     if _is_mock():
         return fixtures.get_incident_page()
-    raise HTTPException(status_code=501, detail="Not implemented")
+    
+    _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
+    with db_session(_db_path) as conn:
+        query = "SELECT * FROM incidents WHERE 1=1"
+        params = []
+        
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if verdict:
+            query += " AND verdict = ?"
+            params.append(verdict)
+        if family:
+            query += " AND attack_family = ?"
+            params.append(family)
+        if level:
+            query += " AND risk_level = ?"
+            params.append(level)
+        if since:
+            query += " AND first_seen >= ?"
+            params.append(since)
+            
+        count_query = f"SELECT COUNT(*) FROM ({query})"
+        total = conn.execute(count_query, params).fetchone()[0]
+        
+        if sort == "risk":
+            query += " ORDER BY risk_score DESC"
+        elif sort == "last_seen":
+            query += " ORDER BY last_seen DESC"
+        else:
+            query += " ORDER BY risk_score DESC"
+            
+        query += " LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+        
+        rows = conn.execute(query, params).fetchall()
+        items = []
+        for row in rows:
+            item_dict = dict(row)
+            item_dict["mitre_technique_id"] = item_dict.pop("mitre_id", None)
+            item_dict["mitre_technique_name"] = item_dict.pop("mitre_name", None)
+            item_dict.pop("top_features_json", None)
+            item_dict.pop("brief_json", None)
+            item_dict.pop("acknowledged_at", None)
+            item_dict.pop("updated_at", None)
+            items.append(schemas.IncidentSummary.model_validate(item_dict))
+            
+        return schemas.IncidentPage(items=items, total=total, limit=limit, offset=offset)
 
 
 @app.get("/v1/incidents/{incident_id}", response_model=schemas.IncidentDetail)
@@ -193,7 +250,39 @@ def get_incident(incident_id: str):
         detail = fixtures.get_incident_detail()
         detail.incident_id = incident_id
         return detail
-    raise HTTPException(status_code=501, detail="Not implemented")
+
+    _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
+    with db_session(_db_path) as conn:
+        row = conn.execute("SELECT * FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Incident not found")
+        
+        item_dict = dict(row)
+        item_dict["mitre_technique_id"] = item_dict.pop("mitre_id", None)
+        item_dict["mitre_technique_name"] = item_dict.pop("mitre_name", None)
+        item_dict.pop("acknowledged_at", None)
+        item_dict.pop("updated_at", None)
+        
+        tf_json = item_dict.pop("top_features_json", None)
+        if tf_json:
+            item_dict["top_features"] = json.loads(tf_json)
+        else:
+            item_dict["top_features"] = []
+            
+        bf_json = item_dict.pop("brief_json", None)
+        if bf_json:
+            item_dict["brief"] = json.loads(bf_json)
+            
+        flow_rows = conn.execute("SELECT flow_id FROM flows WHERE incident_id = ? LIMIT 20", (incident_id,)).fetchall()
+        item_dict["sample_flow_ids"] = [r["flow_id"] for r in flow_rows]
+        
+        action_rows = conn.execute(
+            "SELECT * FROM analyst_actions WHERE incident_id = ? ORDER BY at ASC",
+            (incident_id,),
+        ).fetchall()
+        item_dict["actions"] = [dict(r) for r in action_rows]
+        
+        return schemas.IncidentDetail.model_validate(item_dict)
 
 
 @app.post("/v1/incidents/{incident_id}/actions", response_model=schemas.AnalystActionRecord)
@@ -202,16 +291,70 @@ def add_incident_action(
     action: schemas.AnalystActionIn,
     x_analyst: str | None = Header(None),
 ):
+    if not x_analyst:
+        raise HTTPException(status_code=422, detail="X-Analyst header is required")
+
     if _is_mock():
         return schemas.AnalystActionRecord(
             action_id=1,
             incident_id=incident_id,
-            analyst=x_analyst or "mock_analyst",
+            analyst=x_analyst,
             action=action.action,
             note=action.note,
             at=datetime.utcnow(),
         )
-    raise HTTPException(status_code=501, detail="Not implemented")
+
+    _db_path = os.environ.get("NS_DB_PATH", "netsentinel.db")
+    with db_session(_db_path) as conn:
+        row = conn.execute("SELECT status, acknowledged_at FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Incident not found")
+            
+        current_status = row["status"]
+        if current_status in ("dismissed_fp", "resolved"):
+            raise HTTPException(status_code=400, detail="Cannot perform actions on a closed incident")
+            
+        new_status = current_status
+        if action.action == "acknowledge":
+            new_status = "acknowledged"
+        elif action.action == "escalate":
+            new_status = "escalated"
+        elif action.action == "dismiss_fp":
+            new_status = "dismissed_fp"
+        elif action.action == "resolve":
+            new_status = "resolved"
+            
+        from datetime import timezone
+        now_str = datetime.now(timezone.utc).isoformat()
+        
+        update_query = "UPDATE incidents SET status = ?, updated_at = ?"
+        update_params = [new_status, now_str]
+        
+        if action.action == "acknowledge" and current_status == "new" and row["acknowledged_at"] is None:
+            update_query += ", acknowledged_at = ?"
+            update_params.append(now_str)
+            
+        update_query += " WHERE incident_id = ?"
+        update_params.append(incident_id)
+        
+        conn.execute(update_query, update_params)
+        
+        cursor = conn.execute(
+            "INSERT INTO analyst_actions (incident_id, analyst, action, note, at) VALUES (?, ?, ?, ?, ?)",
+            (incident_id, x_analyst, action.action.value, action.note, now_str)
+        )
+        action_id = cursor.lastrowid
+        
+        conn.commit()
+        
+        return schemas.AnalystActionRecord(
+            action_id=action_id,
+            incident_id=incident_id,
+            analyst=x_analyst,
+            action=action.action,
+            note=action.note,
+            at=datetime.fromisoformat(now_str),
+        )
 
 
 @app.get("/v1/incidents/{incident_id}/brief", response_model=schemas.Brief)
