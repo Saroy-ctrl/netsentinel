@@ -30,7 +30,8 @@ import dashboard.theme as theme  # noqa: E402
 from dashboard.api_client import APIError, get_evaluation, get_model_info  # noqa: E402
 
 theme.inject_css()
-theme.render_analyst_sidebar()
+theme.render_api_down_banner()
+theme.render_full_sidebar()
 
 # ---------------------------------------------------------------------------
 # Helpers & Chart Builders
@@ -163,7 +164,14 @@ try:
     model = get_model_info()
     report = get_evaluation()
 except APIError as exc:
-    st.error(f"⛔ Could not load model evaluation data: {exc}")
+    st.markdown(
+        theme.error_state(
+            "Could Not Load Model Evaluation Data",
+            str(exc),
+            "Check that the model bundle is loaded or verify backend API connectivity.",
+        ),
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 

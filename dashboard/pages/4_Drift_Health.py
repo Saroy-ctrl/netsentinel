@@ -28,7 +28,8 @@ import dashboard.theme as theme  # noqa: E402
 from dashboard.api_client import APIError, get_drift, get_live_metrics  # noqa: E402
 
 theme.inject_css()
-theme.render_analyst_sidebar()
+theme.render_api_down_banner()
+theme.render_full_sidebar()
 
 # ---------------------------------------------------------------------------
 # Helpers & Chart Builders
@@ -124,7 +125,14 @@ try:
     drift = get_drift()
     metrics = get_live_metrics()
 except APIError as exc:
-    st.error(f"⛔ Could not load drift or metrics data: {exc}")
+    st.markdown(
+        theme.error_state(
+            "Could Not Load Drift & Telemetry Data",
+            str(exc),
+            "Ensure the drift monitoring service is active or verify backend connectivity.",
+        ),
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 
@@ -229,7 +237,14 @@ with col_chart:
         fig_psi = _build_psi_chart(drift.features)
         st.plotly_chart(fig_psi, use_container_width=True)
     else:
-        st.info("No feature drift measurements available in the current window.")
+        st.markdown(
+            theme.empty_state(
+                "📡",
+                "No Feature Drift Records",
+                "No features have accumulated enough flows in the current window to compute PSI.",
+            ),
+            unsafe_allow_html=True,
+        )
 
 with col_prevalence:
     st.subheader("📈 Traffic Attack Rate Shift")

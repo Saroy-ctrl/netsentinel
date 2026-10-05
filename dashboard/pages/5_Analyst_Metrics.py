@@ -29,7 +29,8 @@ import dashboard.theme as theme  # noqa: E402
 from dashboard.api_client import APIError, get_live_metrics  # noqa: E402
 
 theme.inject_css()
-theme.render_analyst_sidebar()
+theme.render_api_down_banner()
+theme.render_full_sidebar()
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +158,14 @@ def _fmt_ts(val: Any) -> str:
 try:
     metrics = get_live_metrics()
 except APIError as exc:
-    st.error(f"⛔ Could not load analyst metrics: {exc}")
+    st.markdown(
+        theme.error_state(
+            "Could Not Load Analyst Performance Metrics",
+            str(exc),
+            "Ensure the metrics aggregation service is active or verify backend connectivity.",
+        ),
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 session_actions: list[Any] = st.session_state.get("_global_analyst_actions", [])

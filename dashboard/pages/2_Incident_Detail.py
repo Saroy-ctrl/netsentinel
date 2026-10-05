@@ -50,7 +50,8 @@ from nscore.contracts.schemas import (  # noqa: E402
 )
 
 theme.inject_css()
-theme.render_analyst_sidebar()
+theme.render_api_down_banner()
+theme.render_full_sidebar()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -185,7 +186,14 @@ current_incident_id = target_id
 try:
     detail = get_incident(current_incident_id)
 except APIError as exc:
-    st.error(f"⛔ Could not load incident {current_incident_id}: {exc}")
+    st.markdown(
+        theme.error_state(
+            f"Could Not Load Incident {current_incident_id}",
+            str(exc),
+            "Verify incident ID exists in the queue or verify backend API connectivity.",
+        ),
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 # Support live status override in session state
@@ -334,7 +342,14 @@ if detail.top_features:
         df_vs_normal = pd.DataFrame(rows)
         st.dataframe(df_vs_normal, use_container_width=True, hide_index=True)
 else:
-    st.info("No SHAP feature contributions available for this incident.")
+    st.markdown(
+        theme.empty_state(
+            "🔬",
+            "No SHAP Feature Attribution",
+            "Feature attribution scores were not calculated for this incident.",
+        ),
+        unsafe_allow_html=True,
+    )
 
 st.markdown(theme.divider(), unsafe_allow_html=True)
 
@@ -474,6 +489,11 @@ if all_actions:
         )
 else:
     st.markdown(
-        f"<div style='color:{theme.TXT_MUTED};font-size:0.85rem;'>No analyst actions recorded yet.</div>",
+        theme.empty_state(
+            "📜",
+            "No Actions Recorded Yet",
+            "No triage actions have been submitted for this incident. Use the action buttons above "
+            "to acknowledge, escalate, or resolve.",
+        ),
         unsafe_allow_html=True,
     )

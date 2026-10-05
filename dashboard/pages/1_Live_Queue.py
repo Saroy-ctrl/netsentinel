@@ -27,7 +27,8 @@ from dashboard.api_client import APIError, get_incidents, get_live_metrics, get_
 from nscore.contracts.schemas import AttackFamily, IncidentStatus, Verdict  # noqa: E402
 
 theme.inject_css()
-theme.render_analyst_sidebar()
+theme.render_api_down_banner()
+theme.render_full_sidebar()
 
 # ── session-state defaults ────────────────────────────────────────────────────
 _DEFAULTS: dict[str, object] = {
@@ -295,9 +296,13 @@ def _live_queue_fragment() -> None:
             offset=page_idx * page_size,
         )
     except APIError as exc:
-        st.error(
-            f"⛔ **Could not load incidents:** {exc}",
-            icon="⛔",
+        st.markdown(
+            theme.error_state(
+                "Could Not Load Incidents",
+                str(exc),
+                "Check backend connectivity at NS_API_URL or verify if service is operational.",
+            ),
+            unsafe_allow_html=True,
         )
         return
 
@@ -307,10 +312,21 @@ def _live_queue_fragment() -> None:
     # ── empty state ──────────────────────────────────────────────────────────
     if total == 0:
         st.markdown(
-            f"<div style='padding:40px;text-align:center;color:{theme.TXT_MUTED}'>"
-            f"No incidents match the current filters.</div>",
+            theme.empty_state(
+                "🔍",
+                "No Incidents Found",
+                "No open incidents match the currently selected filter parameters. "
+                "Try resetting filters or adjusting criteria above.",
+            ),
             unsafe_allow_html=True,
         )
+        if st.button("Reset All Filters", key="_btn_reset_filters_empty", use_container_width=True):
+            st.session_state["lq_status"] = ""
+            st.session_state["lq_verdict"] = ""
+            st.session_state["lq_family"] = ""
+            st.session_state["lq_level"] = ""
+            st.session_state["lq_page"] = 0
+            st.rerun()
         st.session_state["lq_prev_ids"] = set()
         return
 

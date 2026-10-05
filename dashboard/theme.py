@@ -526,7 +526,7 @@ def analyst_badge(name: str, role: str) -> str:
     )
 
 
-def render_analyst_sidebar() -> tuple[str, str, str]:
+def render_analyst_sidebar(show_header: bool = True) -> tuple[str, str, str]:
     """Render the analyst sign-in and profile card in the Streamlit sidebar.
 
     Returns (name, role, x_analyst_header).
@@ -535,19 +535,20 @@ def render_analyst_sidebar() -> tuple[str, str, str]:
     name, role, header = get_analyst()
 
     with st.sidebar:
-        st.markdown(
-            f"<div style='background:{BG_CARD};border:1px solid {BORDER_SUBTLE};"
-            f"border-radius:6px;padding:8px 12px;margin-bottom:8px;'>"
-            f"<div style='font-size:0.70rem;color:{TXT_MUTED};text-transform:uppercase;"
-            f"letter-spacing:0.05em;'>Active Analyst</div>"
-            f"<div style='font-weight:700;color:{TXT_PRIMARY};font-size:0.92rem;line-height:1.3;'>"
-            f"{name}</div>"
-            f"<div style='font-size:0.75rem;color:{CLR_CONF_HIGH};'>{role}</div>"
-            f"<div style='font-size:0.68rem;color:{TXT_MUTED};margin-top:4px;"
-            f"font-family:{FONT_MONO};'>X-Analyst: {header}</div>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+        if show_header:
+            st.markdown(
+                f"<div style='background:{BG_CARD};border:1px solid {BORDER_SUBTLE};"
+                f"border-radius:6px;padding:8px 12px;margin-bottom:8px;'>"
+                f"<div style='font-size:0.70rem;color:{TXT_MUTED};text-transform:uppercase;"
+                f"letter-spacing:0.05em;'>Active Analyst</div>"
+                f"<div style='font-weight:700;color:{TXT_PRIMARY};font-size:0.92rem;line-height:1.3;'>"
+                f"{name}</div>"
+                f"<div style='font-size:0.75rem;color:{CLR_CONF_HIGH};'>{role}</div>"
+                f"<div style='font-size:0.68rem;color:{TXT_MUTED};margin-top:4px;"
+                f"font-family:{FONT_MONO};'>X-Analyst: {header}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
         with st.expander("👤 Analyst Sign-in / Role", expanded=False):
             new_name = st.text_input(
                 "Name",
@@ -568,4 +569,149 @@ def render_analyst_sidebar() -> tuple[str, str, str]:
                 st.rerun()
 
     return st.session_state["analyst_name"], st.session_state["analyst_role"], get_analyst()[2]
+
+
+# ---------------------------------------------------------------------------
+# Polish: Empty states, error states & shared sidebar (M4-10)
+# ---------------------------------------------------------------------------
+
+
+def empty_state(icon: str, title: str, message: str) -> str:
+    """Return an HTML snippet for a sleek dark empty-state card."""
+    return (
+        f"<div style='background:{BG_CARD};border:1px dashed {BORDER_SUBTLE};"
+        f"border-radius:8px;padding:36px 24px;text-align:center;margin:18px 0;'>"
+        f"<div style='font-size:2.4rem;margin-bottom:8px;'>{icon}</div>"
+        f"<div style='font-size:1.05rem;font-weight:700;color:{TXT_PRIMARY};"
+        f"margin-bottom:6px;'>{title}</div>"
+        f"<div style='font-size:0.86rem;color:{TXT_MUTED};max-width:540px;"
+        f"margin:0 auto;line-height:1.5;'>{message}</div>"
+        f"</div>"
+    )
+
+
+def error_state(title: str, error_message: str, suggestion: str | None = None) -> str:
+    """Return an HTML snippet for a dark error state card."""
+    sugg_html = (
+        f"<div style='font-size:0.82rem;color:{TXT_SECONDARY};margin-top:8px;"
+        f"background:rgba(255,255,255,0.03);padding:6px 12px;border-radius:4px;'>"
+        f"💡 <strong>Remediation:</strong> {suggestion}</div>"
+        if suggestion
+        else ""
+    )
+    return (
+        f"<div style='background:{BG_CARD};border-left:4px solid {CLR_HIGH};"
+        f"border-top:1px solid {BORDER_SUBTLE};border-right:1px solid {BORDER_SUBTLE};"
+        f"border-bottom:1px solid {BORDER_SUBTLE};border-radius:0 8px 8px 0;"
+        f"padding:16px 20px;margin:16px 0;'>"
+        f"<div style='font-size:1.0rem;font-weight:700;color:{CLR_HIGH};"
+        f"margin-bottom:4px;'>⛔ {title}</div>"
+        f"<div style='font-size:0.86rem;color:{TXT_PRIMARY};"
+        f"font-family:{FONT_MONO};'>{error_message}</div>"
+        f"{sugg_html}"
+        f"</div>"
+    )
+
+
+def render_api_down_banner() -> bool:
+    """Check API connectivity if in live mode; show banner and return False if down."""
+    try:
+        from dashboard.api_client import get_api_url, health_check, is_offline
+
+        if is_offline():
+            return True
+        try:
+            health_check()
+            return True
+        except Exception as exc:
+            st.markdown(
+                f"<div style='background:#B71C1C;color:#FFFFFF;border-radius:8px;"
+                f"padding:14px 18px;margin-bottom:18px;display:flex;"
+                f"align-items:center;gap:14px;box-shadow:0 4px 14px rgba(183,28,28,0.35);'>"
+                f"<span style='font-size:2.0rem;'>⛔</span>"
+                f"<div>"
+                f"<div style='font-weight:800;font-size:0.96rem;"
+                f"letter-spacing:0.04em;'>NETSENTINEL API DOWN / UNREACHABLE</div>"
+                f"<div style='font-size:0.84rem;opacity:0.95;margin-top:2px;"
+                f"line-height:1.4;'>"
+                f"Unable to reach backend API at <code>{get_api_url()}</code> ({exc}).<br>"
+                f"Start the FastAPI backend service, or switch to fixture demo mode"
+                f' with <code>$env:NS_OFFLINE="1"</code>.'
+                f"</div>"
+                f"</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            return False
+    except Exception:
+        return True
+
+
+def render_full_sidebar() -> None:
+    """Render unified, screenshot-ready sidebar across all dashboard pages."""
+    with st.sidebar:
+        st.image(
+            "https://img.shields.io/badge/NetSentinel-SOC%20Console-0d6efd?style=for-the-badge",
+            use_container_width=True,
+        )
+        st.markdown("---")
+
+        render_analyst_sidebar(show_header=True)
+        st.markdown("---")
+
+        try:
+            from dashboard.api_client import (
+                data_source_label,
+                get_live_metrics,
+                get_model_info,
+            )
+
+            metrics = get_live_metrics()
+            high_count = metrics.incidents_by_level.get("HIGH", 0)
+            med_count = metrics.incidents_by_level.get("MEDIUM", 0)
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Open", metrics.incidents_open)
+                st.markdown(
+                    f'<div style="font-size:0.75rem;color:{TXT_MUTED};'
+                    f'margin-top:-10px">HIGH</div>'
+                    f'<div style="font-size:1.3rem;font-weight:700;'
+                    f'color:{CLR_HIGH}">{high_count}</div>',
+                    unsafe_allow_html=True,
+                )
+            with col2:
+                st.metric("flows/s", f"{metrics.flows_per_sec_1m:.0f}")
+                st.markdown(
+                    f'<div style="font-size:0.75rem;color:{TXT_MUTED};'
+                    f'margin-top:-10px">MEDIUM</div>'
+                    f'<div style="font-size:1.3rem;font-weight:700;'
+                    f'color:{CLR_MEDIUM}">{med_count}</div>',
+                    unsafe_allow_html=True,
+                )
+        except Exception as e:
+            st.caption(f"Telemetry unavailable: {e}")
+
+        st.markdown("---")
+
+        try:
+            model = get_model_info()
+            st.markdown(
+                bundle_badge(model.feature_schema, model.model_version),
+                unsafe_allow_html=True,
+            )
+            fh_icon = "✅" if model.family_head else "❌"
+            st.caption(
+                f"family_head: {fh_icon} &nbsp;|&nbsp; FPR target: {model.operating_fpr_target:.1%}"
+            )
+        except Exception as e:
+            st.caption(f"Model info unavailable: {e}")
+
+        st.markdown("---")
+        try:
+            src_label = data_source_label()
+        except Exception:
+            src_label = "offline (fixtures)"
+        st.caption(f"Data source: **{src_label}**")
+        st.caption("Contract v2.1.0")
+
 
