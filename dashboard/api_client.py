@@ -45,22 +45,30 @@ logger = logging.getLogger(__name__)
 
 _FIXTURES_DIR = Path(__file__).parent.parent / "nscore" / "contracts" / "fixtures"
 
-_OFFLINE: bool = os.environ.get("NS_OFFLINE", "").strip().lower() in ("1", "true", "yes")
-_API_URL: str = os.environ.get("NS_API_URL", "").rstrip("/")
+def is_offline() -> bool:
+    """Return True if offline fixture mode is requested or if NS_API_URL is missing."""
+    val = os.environ.get("NS_OFFLINE", "").strip().lower()
+    if val in ("1", "true", "yes"):
+        return True
+    if val in ("0", "false", "no"):
+        return False
+    return not bool(os.environ.get("NS_API_URL", "").strip())
 
-if not _OFFLINE and not _API_URL:
-    logger.warning(
-        "Neither NS_OFFLINE=1 nor NS_API_URL is set. "
-        "Falling back to offline fixture mode."
-    )
-    _OFFLINE = True
+
+def get_api_url() -> str:
+    """Return the resolved base URL of the NetSentinel backend API."""
+    return os.environ.get("NS_API_URL", "").rstrip("/")
+
+
+_OFFLINE: bool = is_offline()
+_API_URL: str = get_api_url()
 
 
 def _data_source() -> str:
     """Human-readable label for the current data source."""
-    if _OFFLINE:
+    if is_offline():
         return "offline (fixtures)"
-    return f"API ({_API_URL})"
+    return f"API ({get_api_url()})"
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +95,7 @@ def _fixture(name: str) -> dict[str, Any]:
 
 def _get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     """HTTP GET against NS_API_URL.  Returns parsed JSON dict."""
-    url = f"{_API_URL}{path}"
+    url = f"{get_api_url()}{path}"
     try:
         r = httpx.get(url, params=params, timeout=10.0)
         r.raise_for_status()
@@ -105,7 +113,7 @@ def _get(path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def _post(path: str, body: dict[str, Any], headers: dict[str, str] | None = None) -> dict[str, Any]:
     """HTTP POST against NS_API_URL.  Returns parsed JSON dict."""
-    url = f"{_API_URL}{path}"
+    url = f"{get_api_url()}{path}"
     try:
         r = httpx.post(url, json=body, headers=headers or {}, timeout=10.0)
         r.raise_for_status()
@@ -128,14 +136,14 @@ def _post(path: str, body: dict[str, Any], headers: dict[str, str] | None = None
 
 def get_model_info() -> ModelInfo:
     """GET /v1/model — loaded bundle info (version, family_head, thresholds, …)."""
-    if _OFFLINE:
+    if is_offline():
         return ModelInfo.model_validate(_fixture("model_info"))
     return ModelInfo.model_validate(_get("/v1/model"))
 
 
 def get_evaluation() -> EvaluationReport:
     """GET /v1/model/evaluation — per-class metrics, LOAO, external, limitations."""
-    if _OFFLINE:
+    if is_offline():
         return EvaluationReport.model_validate(_fixture("evaluation_report"))
     return EvaluationReport.model_validate(_get("/v1/model/evaluation"))
 
@@ -152,7 +160,7 @@ def get_incidents(
     sort: str = "risk",
 ) -> IncidentPage:
     """GET /v1/incidents — paginated, filtered incident list."""
-    if _OFFLINE:
+    if is_offline():
         # Offline: load fixture and apply basic in-process filtering
         page = IncidentPage.model_validate(_fixture("incident_page"))
         items = page.items
@@ -186,7 +194,7 @@ def get_incidents(
 
 def get_incident(incident_id: str) -> IncidentDetail:
     """GET /v1/incidents/{id} — full detail including SHAP, actions, brief."""
-    if _OFFLINE:
+    if is_offline():
         detail_data = _fixture("incident_detail")
         if incident_id and incident_id != detail_data.get("incident_id"):
             page_data = _fixture("incident_page")
@@ -205,7 +213,7 @@ def get_incident(incident_id: str) -> IncidentDetail:
 
 def get_brief(incident_id: str, *, refresh: bool = False) -> Brief:
     """GET /v1/incidents/{id}/brief — LLM or template brief."""
-    if _OFFLINE:
+    if is_offline():
         detail = IncidentDetail.model_validate(_fixture("incident_detail"))
         if detail.brief is None:
             raise APIError("Fixture incident has no brief")
@@ -224,7 +232,7 @@ def post_action(
     analyst: str,
 ) -> AnalystActionRecord:
     """POST /v1/incidents/{id}/actions — acknowledge, escalate, confirm, dismiss_fp, etc."""
-    if _OFFLINE:
+    if is_offline():
         # Return a synthetic record so the UI can show feedback without a live API.
         from datetime import datetime
 
@@ -246,21 +254,21 @@ def post_action(
 
 def get_drift() -> DriftReport:
     """GET /v1/drift — PSI per feature + overall status."""
-    if _OFFLINE:
+    if is_offline():
         return DriftReport.model_validate(_fixture("drift_report"))
     return DriftReport.model_validate(_get("/v1/drift"))
 
 
 def get_live_metrics() -> LiveMetrics:
     """GET /v1/metrics — throughput, latency, analyst stats."""
-    if _OFFLINE:
+    if is_offline():
         return LiveMetrics.model_validate(_fixture("live_metrics"))
     return LiveMetrics.model_validate(_get("/v1/metrics"))
 
 
 def health_check() -> dict[str, Any]:
     """GET /health — returns raw dict (lightweight; used for API-down banner)."""
-    if _OFFLINE:
+    if is_offline():
         return {"status": "ok", "mode": "offline", "contract_version": CONTRACT_VERSION}
     return _get("/health")
 
