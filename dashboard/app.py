@@ -46,28 +46,8 @@ with st.sidebar:
     )
     st.markdown("---")
 
-    # Analyst sign-in (M4-05 will expand this; stub here so the state key exists)
-    if "analyst_name" not in st.session_state:
-        st.session_state["analyst_name"] = ""
-    if "analyst_role" not in st.session_state:
-        st.session_state["analyst_role"] = "SOC Analyst"
-
-    with st.expander("👤 Analyst", expanded=st.session_state["analyst_name"] == ""):
-        st.session_state["analyst_name"] = st.text_input(
-            "Name",
-            value=st.session_state["analyst_name"],
-            placeholder="e.g. Asha Patel",
-            key="_analyst_name_input",
-        )
-        st.session_state["analyst_role"] = st.selectbox(
-            "Role",
-            ["SOC Analyst", "Tier-2 Analyst", "Incident Responder", "Manager"],
-            index=["SOC Analyst", "Tier-2 Analyst", "Incident Responder", "Manager"].index(
-                st.session_state["analyst_role"]
-            ),
-            key="_analyst_role_select",
-        )
-
+    # Analyst sign-in (M4-05)
+    theme.render_analyst_sidebar()
     st.markdown("---")
 
     # Live header metrics in sidebar

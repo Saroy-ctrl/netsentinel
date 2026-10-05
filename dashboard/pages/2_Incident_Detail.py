@@ -50,6 +50,7 @@ from nscore.contracts.schemas import (  # noqa: E402
 )
 
 theme.inject_css()
+theme.render_analyst_sidebar()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -398,9 +399,16 @@ st.markdown(theme.divider(), unsafe_allow_html=True)
 
 st.subheader("⚡ Analyst Actions")
 
-analyst_name = st.session_state.get("analyst_name") or "Analyst"
-analyst_role = st.session_state.get("analyst_role") or "SOC Analyst"
-st.caption(f"Acting as: **{analyst_name}** ({analyst_role}) — sends header `X-Analyst: {analyst_name}`")
+analyst_name, analyst_role, x_analyst_header = theme.get_analyst()
+
+st.markdown(
+    f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px;'>"
+    f"<span>Acting as:</span> {theme.analyst_badge(analyst_name, analyst_role)} "
+    f"<span style='color:{theme.TXT_MUTED};font-size:0.80rem;font-family:{theme.FONT_MONO};'>"
+    f"Header: <code>X-Analyst: {x_analyst_header}</code></span>"
+    f"</div>",
+    unsafe_allow_html=True,
+)
 
 action_note = st.text_input(
     "Analyst Note",
@@ -418,10 +426,10 @@ def _record_action(action_type: ActionType, new_status: IncidentStatus) -> None:
     """Submit action to API client, update state, and refresh."""
     try:
         req = AnalystActionIn(action=action_type, note=action_note.strip() or None)
-        rec = post_action(detail.incident_id, req, analyst=analyst_name)
+        rec = post_action(detail.incident_id, req, analyst=x_analyst_header)
         extra_actions.append(rec)
         st.session_state[status_key] = new_status.value
-        st.success(f"Action '{action_type.value}' recorded by {analyst_name}!")
+        st.success(f"Action '{action_type.value}' recorded by {x_analyst_header}!")
         st.rerun()
     except APIError as e:
         st.error(f"Action submission failed: {e}")

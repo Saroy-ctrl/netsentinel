@@ -27,6 +27,7 @@ from dashboard.api_client import APIError, get_incidents, get_live_metrics, get_
 from nscore.contracts.schemas import AttackFamily, IncidentStatus, Verdict  # noqa: E402
 
 theme.inject_css()
+theme.render_analyst_sidebar()
 
 # ── session-state defaults ────────────────────────────────────────────────────
 _DEFAULTS: dict[str, object] = {

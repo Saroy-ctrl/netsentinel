@@ -214,6 +214,9 @@ def get_brief(incident_id: str, *, refresh: bool = False) -> Brief:
     return Brief.model_validate(_get(f"/v1/incidents/{incident_id}/brief", params=params))
 
 
+_offline_action_counter = 1000
+
+
 def post_action(
     incident_id: str,
     action: AnalystActionIn,
@@ -225,8 +228,10 @@ def post_action(
         # Return a synthetic record so the UI can show feedback without a live API.
         from datetime import datetime
 
+        global _offline_action_counter
+        _offline_action_counter += 1
         return AnalystActionRecord(
-            action_id=999,
+            action_id=_offline_action_counter,
             incident_id=incident_id,
             analyst=analyst,
             action=action.action,

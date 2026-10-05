@@ -478,3 +478,94 @@ def bundle_badge(feature_schema: str, model_version: str) -> str:
         f'letter-spacing:0.05em;">{label}</span>&nbsp;'
         f'<span class="ns-muted ns-mono">{model_version}</span>'
     )
+
+
+# ---------------------------------------------------------------------------
+# Analyst sign-in & session management (M4-05)
+# ---------------------------------------------------------------------------
+
+ANALYST_ROLES: list[str] = [
+    "SOC Analyst",
+    "Tier-2 Analyst",
+    "Incident Responder",
+    "Threat Hunter",
+    "Manager",
+]
+
+
+def init_analyst_session() -> None:
+    """Ensure analyst session state keys exist."""
+    if "analyst_name" not in st.session_state or not st.session_state["analyst_name"]:
+        st.session_state["analyst_name"] = "Asha Patel"
+    if "analyst_role" not in st.session_state or not st.session_state["analyst_role"]:
+        st.session_state["analyst_role"] = "SOC Analyst"
+
+
+def get_analyst() -> tuple[str, str, str]:
+    """Return (name, role, x_analyst_header).
+
+    x_analyst_header is formatted as 'Name (Role)' sent in X-Analyst header.
+    """
+    init_analyst_session()
+    name = str(st.session_state.get("analyst_name", "")).strip() or "Asha Patel"
+    role = str(st.session_state.get("analyst_role", "")).strip() or "SOC Analyst"
+    header = f"{name} ({role})"
+    return name, role, header
+
+
+def analyst_badge(name: str, role: str) -> str:
+    """Return an HTML badge for the active signed-in analyst."""
+    return (
+        f'<span style="display:inline-flex;align-items:center;gap:6px;'
+        f'background:{BG_CARD};border:1px solid {BORDER_SUBTLE};'
+        f'padding:3px 10px;border-radius:14px;font-size:0.75rem;">'
+        f'<span style="color:{CLR_CONF_HIGH};font-weight:700;">👤 {name}</span>'
+        f'<span style="color:{TXT_MUTED};">·</span>'
+        f'<span style="color:{TXT_SECONDARY};">{role}</span>'
+        f'</span>'
+    )
+
+
+def render_analyst_sidebar() -> tuple[str, str, str]:
+    """Render the analyst sign-in and profile card in the Streamlit sidebar.
+
+    Returns (name, role, x_analyst_header).
+    """
+    init_analyst_session()
+    name, role, header = get_analyst()
+
+    with st.sidebar:
+        st.markdown(
+            f"<div style='background:{BG_CARD};border:1px solid {BORDER_SUBTLE};"
+            f"border-radius:6px;padding:8px 12px;margin-bottom:8px;'>"
+            f"<div style='font-size:0.70rem;color:{TXT_MUTED};text-transform:uppercase;"
+            f"letter-spacing:0.05em;'>Active Analyst</div>"
+            f"<div style='font-weight:700;color:{TXT_PRIMARY};font-size:0.92rem;line-height:1.3;'>"
+            f"{name}</div>"
+            f"<div style='font-size:0.75rem;color:{CLR_CONF_HIGH};'>{role}</div>"
+            f"<div style='font-size:0.68rem;color:{TXT_MUTED};margin-top:4px;"
+            f"font-family:{FONT_MONO};'>X-Analyst: {header}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        with st.expander("👤 Analyst Sign-in / Role", expanded=False):
+            new_name = st.text_input(
+                "Name",
+                value=name,
+                placeholder="e.g. Asha Patel",
+                key="_analyst_name_input_shared",
+            )
+            role_idx = ANALYST_ROLES.index(role) if role in ANALYST_ROLES else 0
+            new_role = st.selectbox(
+                "Role",
+                ANALYST_ROLES,
+                index=role_idx,
+                key="_analyst_role_select_shared",
+            )
+            if new_name != name or new_role != role:
+                st.session_state["analyst_name"] = new_name
+                st.session_state["analyst_role"] = new_role
+                st.rerun()
+
+    return st.session_state["analyst_name"], st.session_state["analyst_role"], get_analyst()[2]
+
