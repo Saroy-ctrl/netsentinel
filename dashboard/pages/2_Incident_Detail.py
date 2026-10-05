@@ -428,6 +428,7 @@ def _record_action(action_type: ActionType, new_status: IncidentStatus) -> None:
         req = AnalystActionIn(action=action_type, note=action_note.strip() or None)
         rec = post_action(detail.incident_id, req, analyst=x_analyst_header)
         extra_actions.append(rec)
+        st.session_state.setdefault("_global_analyst_actions", []).append(rec)
         st.session_state[status_key] = new_status.value
         st.success(f"Action '{action_type.value}' recorded by {x_analyst_header}!")
         st.rerun()
