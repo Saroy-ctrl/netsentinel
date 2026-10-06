@@ -23,7 +23,7 @@ import os
 import time
 from datetime import UTC, datetime
 
-from api.app.correlator import IncidentCorrelator
+from api.app.correlator import CORRELATION_WINDOW_SECONDS, IncidentCorrelator
 from nscore.bundle.loader import Bundle
 from nscore.contracts import policy, schemas
 from nscore.contracts.schemas import AttackFamily, Verdict
@@ -41,6 +41,46 @@ def _shap_cap() -> int:
         return max(0, int(os.environ.get("NS_SHAP_MAX_PER_BATCH", DEFAULT_SHAP_MAX_PER_BATCH)))
     except ValueError:
         return DEFAULT_SHAP_MAX_PER_BATCH
+
+
+# Every incident touched by a batch gets at least one explained flow, even past the cap, up to this ceiling (a scan from
+# hundreds of sources). Without it an incident whose flows all rank below the cap has no SHAP chart in the console.
+SHAP_INCIDENT_CEILING = 100
+
+
+def _select_for_shap(metas, verdicts, families, p_attack, cap: int) -> list[int]:
+    """Flow indices to explain: the most suspicious flow of each incident group, then the most suspicious of the rest.
+
+    Groups mirror the correlator: key (src_ip, dst_ip, family; novel anomalies -> Unknown), split wherever consecutive
+    flows of a key are more than the correlation window apart (each such run becomes its own incident).
+    Returned in batch order.
+    """
+    if cap <= 0:
+        return []
+    attacks = sorted((i for i, v in enumerate(verdicts) if v is not Verdict.BENIGN), key=lambda i: -float(p_attack[i]))
+
+    by_key: dict[tuple, list[int]] = {}
+    for i in attacks:
+        family = AttackFamily.UNKNOWN if verdicts[i] is Verdict.NOVEL_ANOMALY else families[i]
+        by_key.setdefault((metas[i].src_ip, metas[i].dst_ip, family), []).append(i)
+    group_of: dict[int, tuple] = {}
+    for key, members in by_key.items():
+        run, last = 0, None
+        for i in sorted(members, key=lambda j: metas[j].observed_at):
+            t = metas[i].observed_at
+            if last is not None and (t - last).total_seconds() > CORRELATION_WINDOW_SECONDS:
+                run += 1
+            group_of[i], last = (key, run), t
+
+    seen, representatives = set(), []
+    for i in attacks:  # most suspicious first, so each group's representative is its most suspicious flow
+        if group_of[i] not in seen:
+            seen.add(group_of[i])
+            representatives.append(i)
+    chosen = representatives[:max(cap, SHAP_INCIDENT_CEILING)]
+    taken = set(chosen)
+    chosen += [i for i in attacks if i not in taken][:max(0, cap - len(chosen))]
+    return sorted(chosen)
 
 
 def _now_iso() -> str:
@@ -98,12 +138,9 @@ class ScoringService:
         # ----------------------------------------------------------------
         # SHAP for non-benign flows (best-effort)
         # ----------------------------------------------------------------
-        non_benign_idx = [
-            i for i, v in enumerate(det.verdict) if v is not Verdict.BENIGN
-        ]
-        cap = _shap_cap()
-        if len(non_benign_idx) > cap:  # keep the most suspicious flows, in their original order
-            non_benign_idx = sorted(sorted(non_benign_idx, key=lambda i: -float(det.p_attack[i]))[:cap])
+        non_benign_idx = _select_for_shap(
+            [fr.meta for fr in flow_records], det.verdict, det.family, det.p_attack, _shap_cap()
+        )
         contributions: list[list[schemas.FeatureContribution]] = [
             [] for _ in flow_records
         ]
