@@ -21,6 +21,8 @@ testable without a Streamlit context.
 
 from __future__ import annotations
 
+import re
+
 import streamlit as st
 
 # ---------------------------------------------------------------------------
@@ -504,13 +506,19 @@ def init_analyst_session() -> None:
 def get_analyst() -> tuple[str, str, str]:
     """Return (name, role, x_analyst_header).
 
-    x_analyst_header is formatted as 'Name (Role)' sent in X-Analyst header.
+    x_analyst_header is 'Name + Role', the format the API enforces on X-Analyst (anything else is a 422).
+    Characters the API does not accept (only letters, digits, spaces and '-' are allowed) are replaced by spaces.
     """
     init_analyst_session()
     name = str(st.session_state.get("analyst_name", "")).strip() or "Asha Patel"
     role = str(st.session_state.get("analyst_role", "")).strip() or "SOC Analyst"
-    header = f"{name} ({role})"
+    header = f"{_header_part(name, 'Analyst')} + {_header_part(role, 'SOC Analyst')}"
     return name, role, header
+
+
+def _header_part(text: str, fallback: str) -> str:
+    cleaned = " ".join(re.sub(r"[^\w\s-]", " ", text).split())
+    return cleaned or fallback
 
 
 def analyst_badge(name: str, role: str) -> str:
