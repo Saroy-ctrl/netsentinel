@@ -28,6 +28,6 @@ API scores for real. See `.env.example` for every variable.
 | `POST /v1/admin/reload-model` | `X-Admin-Key` |
 
 ## Performance note (found against the real M2 bundles)
-Exact TreeSHAP costs 10-100 ms per flow. Only the `NS_SHAP_MAX_PER_BATCH` most suspicious flows of a batch (default 25) get
+Exact TreeSHAP costs 10-100 ms per flow. Every incident a batch touches gets its most suspicious flow explained; beyond that only the `NS_SHAP_MAX_PER_BATCH` most suspicious flows (default 25) get
 `top_features`; all flows are still scored, persisted and correlated, and an incident's SHAP mean is taken over its explained flows only.
 Scoring 1,000 attack flows with `cic-v1` takes about 0.4 s.
