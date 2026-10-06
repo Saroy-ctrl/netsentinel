@@ -1,0 +1,8 @@
+# Act 2: Known Attack Burst (SSH Brute Force)
+name: "act2_bruteforce"
+description: "Replays SSH-Patator brute-force attempts from CSE-CIC-IDS2018; correlator groups flows into one BruteForce incident (MITRE T1110)."
+file: "replay/samples/2018_ssh_bruteforce.csv.gz"
+bundle: "netsentinel-bundle"
+schema: "cic"
+speed: 2.0
+batch_size: 250
