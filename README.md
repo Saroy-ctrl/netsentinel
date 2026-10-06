@@ -29,6 +29,7 @@ CICFlowMeter flows ──► RF (known attack families) ─┐
 5. [CONTRIBUTING.md](CONTRIBUTING.md): branches, PRs, contract-change rule
 
 Results and evidence (generated from the code, so they match the models):
+- [docs/dashboard_guide.md](docs/dashboard_guide.md) ([PDF](docs/pdf/dashboard_guide.pdf)): every dashboard page, panel and number explained, with screenshots
 - [docs/model_card.md](docs/model_card.md): data, models, evaluation, drift, limitations
 - [docs/experiments.md](docs/experiments.md): every experiment behind the design, including what failed
 - [docs/data_profile.md](docs/data_profile.md): dataset audit and split counts

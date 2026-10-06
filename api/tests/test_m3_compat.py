@@ -166,3 +166,30 @@ def test_keys_fail_closed_when_not_configured(monkeypatch):
     old_defaults = {"x-api-key": "test_api_key", "x-admin-key": "admin_secret"}
     assert c.post("/v1/flows", json=one_flow_batch(), headers=old_defaults).status_code == 503
     assert c.post("/v1/admin/reload-model", json={"model_ref": "local:x"}, headers=old_defaults).status_code == 503
+
+
+def test_mtta_counts_from_when_the_incident_reached_the_soc(bundle, conn, monkeypatch):
+    """Replayed flows carry 2018 timestamps; MTTA must not measure from them (it read ~8.6 years)."""
+    from fastapi.testclient import TestClient
+
+    from api.app.main import ModelContext, app
+    from api.tests.helpers import AUTH_HEADERS
+
+    c, db = conn
+    monkeypatch.setenv("NS_DB_PATH", db)
+    payload = _one_pair(_make_flow_payload(bundle, n=40))
+    for f in payload["flows"]:
+        f["meta"]["observed_at"] = "2018-02-14T10:00:00Z"
+    prior = getattr(app.state, "model_ctx", None)
+    app.state.model_ctx = ModelContext(bundle, ScoringService(bundle))
+    try:
+        client = TestClient(app, headers=AUTH_HEADERS)
+        assert client.post("/v1/flows", json=payload).status_code == 200
+        inc = client.get("/v1/incidents").json()["items"][0]["incident_id"]
+        r = client.post(f"/v1/incidents/{inc}/actions", json={"action": "acknowledge"},
+                        headers={"X-Analyst": "Asha Patel + SOC Analyst"})
+        assert r.status_code == 200
+        mtta = client.get("/v1/metrics").json()["mtta_seconds"]
+        assert mtta is not None and 0 <= mtta < 60, mtta
+    finally:
+        app.state.model_ctx = prior

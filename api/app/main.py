@@ -554,9 +554,12 @@ def get_metrics():
         fp_rate: float | None = dismissed_fp / total_reviewed if total_reviewed else None
 
         # -- MTTA (mean time to acknowledge in seconds) -----------------------
+        # Measured from when the incident reached the SOC (its first flow's received_at), not from the flow's own
+        # observed_at: replayed traffic keeps its original (2018) timestamps, which made MTTA read ~8.6 years.
         mtta_rows = conn.execute(
-            "SELECT first_seen, acknowledged_at FROM incidents "
-            "WHERE acknowledged_at IS NOT NULL AND first_seen IS NOT NULL"
+            "SELECT COALESCE((SELECT MIN(f.received_at) FROM flows f WHERE f.incident_id = i.incident_id), "
+            "i.first_seen), i.acknowledged_at FROM incidents i "
+            "WHERE i.acknowledged_at IS NOT NULL AND i.first_seen IS NOT NULL"
         ).fetchall()
         mtta: float | None = None
         if mtta_rows:

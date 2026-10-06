@@ -26,6 +26,10 @@ BROWSERS = [
 ]
 
 CSS = """
+img { max-width: 100%; max-height: 228mm; width: auto; height: auto; display: block; margin: 6px auto 4px;
+      border: 1px solid #d0d7de; break-inside: avoid; }
+h2, h3 { break-after: avoid; }
+
 @page { size: A4; margin: 16mm 14mm 18mm 14mm; }
 :root { --ink:#1b1f24; --muted:#57606a; --line:#d0d7de; --accent:#0b5cad; --soft:#f3f6fa; }
 * { box-sizing: border-box; }
@@ -98,6 +102,9 @@ def render(md_path: Path) -> Path:
     body = markdown.markdown(rest, extensions=["tables", "fenced_code", "sane_lists", "toc"])
     for i, src in enumerate(mermaids):
         body = body.replace(f"<p>MERMAID_{i}</p>", f'<pre class="mermaid">{html.escape(src)}</pre>')
+    # images: links are relative to the .md file (as on GitHub); the HTML is written to docs/pdf, so make them absolute
+    body = re.sub(r'<img ([^>]*?)src="(?!https?:|file:|data:)([^"]+)"',
+                  lambda m: f'<img {m.group(1)}src="{(md_path.parent / m.group(2)).resolve().as_uri()}"', body)
     # GitHub task lists -> printable checkboxes
     body = re.sub(r"<li>\[ \]\s*", '<li><span class="box"></span>', body)
     body = body.replace("<ul>\n<li><span class=\"box\">", '<ul class="tasks">\n<li><span class="box">')
