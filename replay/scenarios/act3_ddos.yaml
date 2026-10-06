@@ -1,0 +1,8 @@
+# Act 3: Alert Storm (DDoS-HOIC)
+name: "act3_ddos"
+description: "Replays high-volume DDoS-HOIC flood; incident correlator collapses thousands of flows into a single HIGH incident, mitigating alert fatigue."
+file: "replay/samples/2018_ddos_hoic.csv.gz"
+bundle: "cic-v1"
+schema: "cic"
+speed: 1.0
+batch_size: 500

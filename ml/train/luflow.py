@@ -89,7 +89,8 @@ def main() -> None:
     benign_v = (val["family"] == "BENIGN").to_numpy()
     t_b, t_a, sorted_scores = thresholds(rf, iso, Xv[benign_v], a.budget)
     print(f"static thresholds from validation: tau_binary={t_b:.4f}  tau_anomaly(score)={t_a:.4f}", flush=True)
-    ref = D.build_reference(Xtr, tr.feature_names)
+    ref = D.build_reference(Xtr, tr.feature_names)  # study: month-by-month PSI of all traffic (docs/experiments.md)
+    ref_benign = D.build_reference(Xtr[~ytr], tr.feature_names)  # bundles: the API measures drift on benign traffic
 
     results = {"budget": a.budget, "tau_binary": t_b, "months": {}}
     periods = sorted(test["period"].unique())
@@ -145,7 +146,7 @@ def main() -> None:
             Path("artifacts/bundles") / name, version=name, spec_path=SPECS["luflow"], transformer=tr, rf_binary=rf_,
             iforest=iso_, benign_val_scores=scores_,
             thresholds={"tau_binary": t_b_, "tau_family": 0.0, "tau_anomaly": TAU_ANOMALY_PCT, "operating_fpr": a.budget},
-            drift_reference=ref, baseline_stats=base, dataset="LUFlow (Lancaster University honeypots 2020-21)",
+            drift_reference=ref_benign, baseline_stats=base, dataset="LUFlow (Lancaster University honeypots 2020-21)",
             split_strategy=report.split_strategy, metrics_summary={"budget": a.budget, "tau_binary": float(t_b_)},
             evaluation_report=json.loads(report.model_dump_json()),
             tags={"role": note, "recalibrated": str("recal" in name).lower()}, overwrite=True)

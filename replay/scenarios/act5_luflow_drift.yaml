@@ -1,0 +1,8 @@
+# Act 5: Real-World Traffic & Feature Drift (LUFlow)
+name: "act5_luflow_drift"
+description: "Replays February 2021 honeypot traffic against the earlier-month LUFlow bundle; demonstrates real-world drift detection (PSI alert) and outlier capture."
+file: "replay/samples/luflow_2021-02.csv.gz"
+bundle: "luflow-v1"
+schema: "luflow"
+speed: 10.0
+batch_size: 250

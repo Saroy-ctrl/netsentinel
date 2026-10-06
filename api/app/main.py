@@ -10,6 +10,7 @@ M3-04: Real POST /v1/flows — DetectionEngine → SHAP → persist to SQLite.
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -128,16 +129,24 @@ async def missing_features_handler(request: Request, exc: MissingFeaturesError):
 # Auth Dependencies
 # ---------------------------------------------------------------------------
 
+def _configured_key(name: str) -> str:
+    """Fail closed: with no key configured the endpoint is unavailable (never a well-known default)."""
+    key = os.environ.get(name, "")
+    if not key:
+        raise HTTPException(status_code=503, detail=f"{name} is not configured on the server")
+    return key
+
+
 def verify_api_key(x_api_key: str | None = Header(None)):
     # Always enforced: mock mode swaps the scoring backend, never the authentication.
-    expected_key = os.environ.get("NS_API_KEY", "test_api_key")
-    if not x_api_key or x_api_key != expected_key:
+    expected_key = _configured_key("NS_API_KEY")
+    if not x_api_key or not hmac.compare_digest(x_api_key, expected_key):
         raise HTTPException(status_code=403, detail="Forbidden: Invalid or missing API key")
     return x_api_key
 
 def verify_admin_key(x_admin_key: str | None = Header(None)):
-    expected_key = os.environ.get("NS_ADMIN_KEY", "admin_secret")
-    if not x_admin_key or x_admin_key != expected_key:
+    expected_key = _configured_key("NS_ADMIN_KEY")
+    if not x_admin_key or not hmac.compare_digest(x_admin_key, expected_key):
         raise HTTPException(status_code=403, detail="Forbidden: Invalid or missing Admin API key")
     return x_admin_key
 

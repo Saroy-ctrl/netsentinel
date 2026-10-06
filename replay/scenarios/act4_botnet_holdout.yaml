@@ -1,0 +1,8 @@
+# Act 4: The Novel Attack (Ares Botnet vs Holdout Bundle)
+name: "act4_botnet_holdout"
+description: "Replays Ares botnet traffic against a model trained without any botnet (cic-holdout-botnet); flags flows as novel_anomaly."
+file: "replay/samples/2018_botnet_ares.csv.gz"
+bundle: "cic-holdout-botnet"
+schema: "cic"
+speed: 2.0
+batch_size: 250

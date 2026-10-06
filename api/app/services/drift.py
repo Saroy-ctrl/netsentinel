@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 WINDOW_SIZE = 2_000
 SNAPSHOT_INTERVAL = 500
+MIN_WINDOW = 200  # benign flows needed before PSI is meaningful (10 bins per feature)
 
 
 class DriftMonitor:
@@ -89,9 +90,13 @@ class DriftMonitor:
 
         n = X_batch.shape[0]
         for i in range(n):
-            self._deque.append(X_batch[i])
             v = verdicts[i] if (verdicts is not None and i < len(verdicts)) else "benign"
             self._verdict_deque.append(v)
+            # PSI is measured on traffic the model calls benign, against the benign training reference: it answers
+            # "does normal traffic still look like what the model learned?". Attacks are reported as incidents; with
+            # them in the window every attack replay read as drift (max PSI 7-9) and even normal traffic as ALERT.
+            if v == "benign":
+                self._deque.append(X_batch[i])
 
         prev_total = self._total_observed
         self._total_observed += n
@@ -114,7 +119,7 @@ class DriftMonitor:
         """Compute PSI from the current rolling window and persist a snapshot."""
         window = list(self._deque)
         verdicts = list(self._verdict_deque)
-        if not window:
+        if len(window) < MIN_WINDOW:  # too few benign flows yet (e.g. during an attack burst): keep the last report
             return
 
         X_window = np.stack(window, axis=0)   # (n, n_features)

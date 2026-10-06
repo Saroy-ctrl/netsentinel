@@ -25,6 +25,10 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.ruff.lint.per-file-ignores]
 "ml/data/make_profile_doc.py" = ["E501"]  # report prose + table rows
 "ml/train/*.py" = ["E501"]  # experiment scripts: docstrings and result-printing lines
+"api/app/services/brief.py" = ["E501"]  # LLM system prompt text: wrapping would change the prompt
+"api/app/services/brief_eval.py" = ["E501"]  # evaluation report lines
+"replay/replay.py" = ["E501"]  # console output lines
+"api/tests/test_brief.py" = ["E501"]  # expected prompt / brief strings
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "api/tests"]
