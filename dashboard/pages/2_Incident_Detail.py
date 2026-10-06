@@ -153,19 +153,22 @@ except APIError:
 # Top bar navigation & selector
 col_nav, col_select = st.columns([1, 2])
 with col_nav:
-    if st.button("← Back to Live Queue", use_container_width=True, key="_btn_back_queue"):
+    if st.button("← Back to Live Queue", width="stretch", key="_btn_back_queue"):
         st.switch_page("pages/1_Live_Queue.py")
 
 # Fetch available incidents for selector dropdown
-available_ids = ["INC-1002"]
+available_ids: list[str] = []
 try:
     recent_page = get_incidents(limit=25)
-    if recent_page.items:
-        available_ids = [i.incident_id for i in recent_page.items]
+    available_ids = [i.incident_id for i in recent_page.items]
 except Exception:
     pass
+if not available_ids:
+    st.info("No incidents yet. Replay some traffic (see docs/demo_script.md) and they will appear here.")
+    st.stop()
 
-selected_id = st.session_state.get("selected_incident_id", available_ids[0])
+# the queue may have stored None (nothing chosen yet): fall back to the highest-risk incident
+selected_id = st.session_state.get("selected_incident_id") or available_ids[0]
 if selected_id not in available_ids:
     available_ids = [selected_id] + available_ids
 
@@ -322,7 +325,7 @@ if detail.top_features:
     with col_chart:
         st.markdown("**SHAP Feature Impact**")
         fig = _build_shap_chart(detail.top_features)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col_table:
         st.markdown("**'vs Normal' Baseline Comparison**")
@@ -340,7 +343,7 @@ if detail.top_features:
                 "SHAP": f"{feat.shap_value:+.3f}",
             })
         df_vs_normal = pd.DataFrame(rows)
-        st.dataframe(df_vs_normal, use_container_width=True, hide_index=True)
+        st.dataframe(df_vs_normal, width="stretch", hide_index=True)
 else:
     st.markdown(
         theme.empty_state(
@@ -382,7 +385,7 @@ with col_brief_hdr:
         )
 
 with col_brief_btn:
-    if st.button("🔄 Regenerate Brief", use_container_width=True, key="_btn_regen_brief"):
+    if st.button("🔄 Regenerate Brief", width="stretch", key="_btn_regen_brief"):
         with st.spinner("Generating brief via LLM / template fallback..."):
             try:
                 fresh_brief = get_brief(detail.incident_id, refresh=True)
@@ -452,23 +455,23 @@ def _record_action(action_type: ActionType, new_status: IncidentStatus) -> None:
 
 
 with btn_c1:
-    if st.button("👁️ Acknowledge", use_container_width=True, key="_act_ack"):
+    if st.button("👁️ Acknowledge", width="stretch", key="_act_ack"):
         _record_action(ActionType.ACKNOWLEDGE, IncidentStatus.ACKNOWLEDGED)
 
 with btn_c2:
-    if st.button("🚀 Escalate", use_container_width=True, key="_act_esc"):
+    if st.button("🚀 Escalate", width="stretch", key="_act_esc"):
         _record_action(ActionType.ESCALATE, IncidentStatus.ESCALATED)
 
 with btn_c3:
-    if st.button("✅ Confirm TP", use_container_width=True, key="_act_conf"):
+    if st.button("✅ Confirm TP", width="stretch", key="_act_conf"):
         _record_action(ActionType.CONFIRM, IncidentStatus.ACKNOWLEDGED)
 
 with btn_c4:
-    if st.button("🚫 Dismiss as FP", use_container_width=True, key="_act_fp"):
+    if st.button("🚫 Dismiss as FP", width="stretch", key="_act_fp"):
         _record_action(ActionType.DISMISS_FP, IncidentStatus.DISMISSED_FP)
 
 with btn_c5:
-    if st.button("🏁 Resolve", use_container_width=True, key="_act_res"):
+    if st.button("🏁 Resolve", width="stretch", key="_act_res"):
         _record_action(ActionType.RESOLVE, IncidentStatus.RESOLVED)
 
 st.markdown("#### 📜 Action Timeline")

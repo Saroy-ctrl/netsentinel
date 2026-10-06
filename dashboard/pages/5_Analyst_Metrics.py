@@ -305,13 +305,13 @@ if session_actions:
         st.markdown("**Actions by Analyst Identity**")
         fig_analyst = _build_actions_per_analyst_chart(session_actions)
         if fig_analyst:
-            st.plotly_chart(fig_analyst, use_container_width=True)
+            st.plotly_chart(fig_analyst, width="stretch")
 
     with col_donut:
         st.markdown("**Action Type Distribution**")
         fig_types = _build_action_type_breakdown(session_actions)
         if fig_types:
-            st.plotly_chart(fig_types, use_container_width=True)
+            st.plotly_chart(fig_types, width="stretch")
 
     # Per-analyst tabular breakdown
     st.markdown("**Per-Analyst Action Summary**")
@@ -327,7 +327,7 @@ if session_actions:
             row[atype.replace("_", " ").title()] = counts.get(atype, 0)
         table_rows.append(row)
 
-    st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
 
 else:
     st.markdown(

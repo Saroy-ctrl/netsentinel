@@ -55,6 +55,7 @@ class DriftMonitor:
         self._model_version: str = bundle.version
         self._ref: dict = bundle.drift_reference          # drift_reference.json contents
         self._names: list[str] = list(self._ref["features"])  # feature order = spec.names order
+        self._operating_fpr: float = float((getattr(bundle, "thresholds", None) or {}).get("operating_fpr", 0.0))
         self._db_path: str = db_path
 
         # Rolling window: deque rows are 1-D float64 arrays, one per flow
@@ -151,8 +152,9 @@ class DriftMonitor:
         n_attack = sum(1 for v in verdicts if v != "benign")
         prediction_attack_rate = n_attack / n_total if n_total > 0 else 0.0
 
-        # Reference attack rate: not stored in drift_reference.json; use 0.0
-        reference_attack_rate = 0.0
+        # Reference = the alert rate expected on normal traffic: the false-alarm budget the thresholds were set to.
+        # (Was hard-coded 0.0, which made any alert read as '+100% vs reference'.)
+        reference_attack_rate = self._operating_fpr
 
         # -- Build report ------------------------------------------------------
         computed_at = datetime.now(UTC)
