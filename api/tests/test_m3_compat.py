@@ -125,7 +125,10 @@ def test_drift_snapshot_is_persisted_without_a_database_lock(bundle, conn, caplo
     batch = schemas.FlowBatch.model_validate(_make_flow_payload(bundle, n=SNAPSHOT_INTERVAL))
     service.score_batch(batch, c, drift_monitor=monitor)
     assert "locked" not in caplog.text, caplog.text
-    assert monitor.get_latest_report() is not None
+    report = monitor.get_latest_report()
+    assert report is not None
+    # reference = the alert rate expected on normal traffic (the false-alarm budget), never a hard-coded 0
+    assert report.reference_attack_rate == pytest.approx(bundle.thresholds["operating_fpr"])
     from api.app.db import get_connection
 
     check = get_connection(db)

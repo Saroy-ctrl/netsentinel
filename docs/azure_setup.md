@@ -21,6 +21,19 @@ AZUREML_WORKSPACE=netsentinel-ws
 Cost: the registry itself is free to use; you pay only for the small storage account the workspace creates (a few MB of bundles).
 **Do not** create compute clusters or endpoints; nothing here needs them.
 
+### Status (2026-10-06)
+Workspace **`netsentinel-ws`** (Poland Central) holds all four bundles at **version 2**: `netsentinel-bundle` (cic-v1),
+`netsentinel-demo-holdout-botnet`, `netsentinel-luflow`, `netsentinel-luflow-recal`. Each was downloaded back into an empty cache,
+passed the sha256 check and loaded. Azure OpenAI deployment **`gpt-4.1-mini`** answers through the API (`source: azure_openai`,
+~4-5 s per brief).
+
+### Signing in
+`scripts/azure_register.py` reads `.env` and signs in with, in order: an `az login` session, a service principal
+(`AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET`), or, if neither exists, **a browser sign-in window**
+(`NS_AZURE_INTERACTIVE=1`, set by the script only). The API never opens a browser: for `MODEL_REF=azureml:...` the machine running the
+API needs `az login` or a service principal, or a warm cache (below). A browser sign-in lasts for one run, so register several bundles
+in one run when using it.
+
 ### Register the bundles
 ```bash
 python scripts/azure_register.py artifacts/bundles/cic-v1               --name netsentinel-bundle

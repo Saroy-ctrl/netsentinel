@@ -228,7 +228,7 @@ with c1:
         delta=f"Target ≤ {model.operating_fpr_target:.2%}",
         delta_color="inverse",
     )
-    st.caption("False alarm rate on validation traffic")
+    st.caption("False alarm rate on the held-out TEST split (the budget is set on validation)")
 
 with c2:
     st.metric("Macro F1", f"{report.macro_f1:.3f}")
@@ -297,7 +297,7 @@ with tab_perclass:
                     "ROC-AUC": auc_str,
                 }
             )
-        st.dataframe(pd.DataFrame(df_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(df_rows), width="stretch", hide_index=True)
         st.caption(
             "All metrics measured on the purged time-blocked test split (60s session purge)."
         )
@@ -307,7 +307,7 @@ with tab_perclass:
             st.markdown("**Multi-Class Confusion Matrix**")
             label_names = [label.value for label in report.labels]
             fig_cm = _build_confusion_heatmap(label_names, report.confusion_matrix)
-            st.plotly_chart(fig_cm, use_container_width=True)
+            st.plotly_chart(fig_cm, width="stretch")
         else:
             st.info(
                 "ℹ️ Single-class bundle active (LUFlow schema) — "
@@ -327,7 +327,7 @@ with tab_loao:
 
     if report.loao:
         fig_loao = _build_loao_chart(report.loao)
-        st.plotly_chart(fig_loao, use_container_width=True)
+        st.plotly_chart(fig_loao, width="stretch")
 
         st.markdown("**LOAO Detailed Results**")
         loao_table_rows = []
@@ -345,7 +345,7 @@ with tab_loao:
                     "Seen Ceiling": f"{item.seen_recall:.1%}",
                 }
             )
-        st.dataframe(pd.DataFrame(loao_table_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(loao_table_rows), width="stretch", hide_index=True)
         st.caption(
             "Key takeaway: High-volume flood attacks (DDoS, DoS) and botnets generalize robustly when unseen, "
             "and are correctly flagged as Novel Anomalies by the confidence gate. "
@@ -432,7 +432,7 @@ with tab_realworld:
                     "Notes": ti.notes or "—",
                 }
             )
-        st.dataframe(pd.DataFrame(tool_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(tool_rows), width="stretch", hide_index=True)
 
 
 # ── Tab 4: Limitations & Honesty ──────────────────────────────────────────────

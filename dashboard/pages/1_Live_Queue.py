@@ -55,6 +55,7 @@ _FAMILY_OPTS = [""] + [
     if f not in (AttackFamily.BENIGN, AttackFamily.PORTSCAN)
 ]
 _LEVEL_OPTS = ["", "HIGH", "MEDIUM", "LOW"]
+_CLOSED = ("resolved", "dismissed_fp")  # statuses that no longer count as open
 _PAGE_SIZES = [10, 25, 50, 100]
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -73,7 +74,8 @@ def _render_header_counters() -> None:
     try:
         metrics = get_live_metrics()
         high_open = metrics.incidents_by_level.get("HIGH", 0)
-        novel_open = 0  # live API will fill this; fixture doesn't break it
+        novel_page = get_incidents(verdict="novel_anomaly", limit=500)
+        novel_open = sum(1 for i in novel_page.items if str(getattr(i.status, "value", i.status)) not in _CLOSED)
     except APIError:
         high_open, novel_open = "—", "—"
         metrics = None
@@ -160,7 +162,7 @@ def _render_filters() -> tuple[str, str, str, str]:
             format_func=lambda x: x or "All levels",
         )
     with fc5:
-        if st.button("Clear", use_container_width=True, key="_lq_clear"):
+        if st.button("Clear", width="stretch", key="_lq_clear"):
             st.session_state["lq_status"] = ""
             st.session_state["lq_verdict"] = ""
             st.session_state["lq_family"] = ""
@@ -320,7 +322,7 @@ def _live_queue_fragment() -> None:
             ),
             unsafe_allow_html=True,
         )
-        if st.button("Reset All Filters", key="_btn_reset_filters_empty", use_container_width=True):
+        if st.button("Reset All Filters", key="_btn_reset_filters_empty", width="stretch"):
             st.session_state["lq_status"] = ""
             st.session_state["lq_verdict"] = ""
             st.session_state["lq_family"] = ""
@@ -349,7 +351,7 @@ def _live_queue_fragment() -> None:
             f"Open {inc.incident_id}",
             key=f"_lq_open_{inc.incident_id}",
             help=f"Open detail for {inc.incident_id}",
-            use_container_width=True,
+            width="stretch",
         ):
             st.session_state["selected_incident_id"] = inc.incident_id
             st.switch_page("pages/2_Incident_Detail.py")

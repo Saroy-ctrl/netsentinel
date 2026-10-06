@@ -170,7 +170,7 @@ with col_n1:
         f"</div>",
         unsafe_allow_html=True,
     )
-    if st.button("Open Live Queue →", key="_nav_queue", use_container_width=True):
+    if st.button("Open Live Queue →", key="_nav_queue", width="stretch"):
         st.switch_page("pages/1_Live_Queue.py")
 
 with col_n2:
@@ -184,7 +184,7 @@ with col_n2:
         f"</div>",
         unsafe_allow_html=True,
     )
-    if st.button("Open Incident Detail →", key="_nav_detail", use_container_width=True):
+    if st.button("Open Incident Detail →", key="_nav_detail", width="stretch"):
         st.switch_page("pages/2_Incident_Detail.py")
 
 with col_n3:
@@ -193,12 +193,12 @@ with col_n3:
         f"<h3 style='margin:0 0 6px 0;'>📊 Model & Evaluation</h3>"
         f"<div style='font-size:0.86rem;color:{theme.TXT_SECONDARY};margin-bottom:12px;'>"
         f"Zero-day generalization via Leave-One-Attack-Out (LOAO), confusion matrices, operating FPR budget, "
-        f"and real-world LUFlow label-free recalibration studies."
+        f"and real-world LUFlow results month by month."
         f"</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
-    if st.button("Open Model & Evaluation →", key="_nav_eval", use_container_width=True):
+    if st.button("Open Model & Evaluation →", key="_nav_eval", width="stretch"):
         st.switch_page("pages/3_Model_Evaluation.py")
 
 st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
@@ -216,7 +216,7 @@ with col_n4:
         f"</div>",
         unsafe_allow_html=True,
     )
-    if st.button("Open Drift & Health →", key="_nav_drift", use_container_width=True):
+    if st.button("Open Drift & Health →", key="_nav_drift", width="stretch"):
         st.switch_page("pages/4_Drift_Health.py")
 
 with col_n5:
@@ -230,7 +230,7 @@ with col_n5:
         f"</div>",
         unsafe_allow_html=True,
     )
-    if st.button("Open Analyst Metrics →", key="_nav_metrics", use_container_width=True):
+    if st.button("Open Analyst Metrics →", key="_nav_metrics", width="stretch"):
         st.switch_page("pages/5_Analyst_Metrics.py")
 
 st.markdown(theme.divider(), unsafe_allow_html=True)
@@ -248,9 +248,10 @@ with col_a1:
     st.markdown(
         f"<div style='background:{theme.BG_CARD};border:1px solid {theme.BORDER_SUBTLE};"
         f"border-radius:6px;padding:14px 16px;line-height:1.5;font-size:0.86rem;'>"
-        f"<h4 style='color:{theme.CLR_HIGH};margin-top:0;'>1. Dual-Engine Fusion</h4>"
-        f"Combines a supervised Random Forest binary gate calibrated at a strict 0.1% false-alarm budget "
-        f"with unsupervised IsolationForest anomaly detection for zero-day threat capture."
+        f"<h4 style='color:{theme.CLR_HIGH};margin-top:0;'>1. Detect, then Name</h4>"
+        f"A Random Forest decides 'attack or not' at a strict 0.1% false-alarm budget; a second forest "
+        f"names the family. When it cannot, the alert is labelled a novel anomaly instead of guessing "
+        f"(measured on held-out families)."
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -270,9 +271,10 @@ with col_a3:
     st.markdown(
         f"<div style='background:{theme.BG_CARD};border:1px solid {theme.BORDER_SUBTLE};"
         f"border-radius:6px;padding:14px 16px;line-height:1.5;font-size:0.86rem;'>"
-        f"<h4 style='color:{theme.CLR_DRIFT_OK};margin-top:0;'>3. Label-Free Recovery</h4>"
-        f"Detects concept drift via rolling PSI. Automatically recovers detection precision by refitting "
-        f"thresholds on recent label-free benign traffic windows without requiring new attack labels."
+        f"<h4 style='color:{theme.CLR_DRIFT_OK};margin-top:0;'>3. Drift Watch</h4>"
+        f"Rolling PSI on the traffic the model calls normal, against normal training traffic: a warning to "
+        f"re-check the model. On real honeypot traffic, detection held through drifted months "
+        f"(precision 98.6%, recall 99.9%)."
         f"</div>",
         unsafe_allow_html=True,
     )

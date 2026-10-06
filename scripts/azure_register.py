@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -19,7 +20,19 @@ from nscore.bundle.azure import register_bundle
 from nscore.bundle.loader import load_bundle
 
 
+def _load_env() -> None:
+    """Read .env (AZURE_* settings) and allow browser sign-in when there is no az login / service principal."""
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+    except ImportError:
+        pass
+    os.environ.setdefault("NS_AZURE_INTERACTIVE", "1")
+
+
 def main() -> None:
+    _load_env()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("bundle", nargs="?", type=Path, help="bundle folder to register")

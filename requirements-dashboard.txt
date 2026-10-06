@@ -1,5 +1,5 @@
 -e .
-streamlit>=1.38
+streamlit>=1.50  # width="stretch" replaces the removed use_container_width
 plotly>=5.22
 httpx>=0.27
 pandas>=2.2

@@ -148,7 +148,7 @@ with col_title:
         f"Rolling Window: {drift.window_size:,} flows"
     )
 with col_btn:
-    if st.button("🔄 Refresh Data", use_container_width=True, key="_btn_refresh_drift"):
+    if st.button("🔄 Refresh Data", width="stretch", key="_btn_refresh_drift"):
         st.rerun()
 
 
@@ -235,7 +235,7 @@ with col_chart:
     )
     if drift.features:
         fig_psi = _build_psi_chart(drift.features)
-        st.plotly_chart(fig_psi, use_container_width=True)
+        st.plotly_chart(fig_psi, width="stretch")
     else:
         st.markdown(
             theme.empty_state(
@@ -248,7 +248,7 @@ with col_chart:
 
 with col_prevalence:
     st.subheader("📈 Traffic Attack Rate Shift")
-    st.caption("Comparison between baseline reference and current window")
+    st.caption("Share of recent flows flagged vs the rate expected on normal traffic (the false-alarm budget)")
 
     diff_rate = drift.prediction_attack_rate - drift.reference_attack_rate
     delta_str = f"{diff_rate:+.1%}"
@@ -256,10 +256,10 @@ with col_prevalence:
     st.metric(
         "Current Window Attack Rate",
         f"{drift.prediction_attack_rate:.1%}",
-        delta=f"{delta_str} vs Reference",
+        delta=f"{delta_str} vs expected",
         delta_color="inverse",
     )
-    st.metric("Baseline Reference Rate", f"{drift.reference_attack_rate:.1%}")
+    st.metric("Expected on Normal Traffic", f"{drift.reference_attack_rate:.1%}")
 
     st.markdown(
         f"<div style='background:{theme.BG_CARD};border:1px solid {theme.BORDER_SUBTLE};"
@@ -300,6 +300,6 @@ if drift.features:
             }
         )
 
-    st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
 else:
     st.info("No feature-level details to display.")

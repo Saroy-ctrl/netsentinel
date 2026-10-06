@@ -660,7 +660,7 @@ def render_full_sidebar() -> None:
     with st.sidebar:
         st.image(
             "https://img.shields.io/badge/NetSentinel-SOC%20Console-0d6efd?style=for-the-badge",
-            use_container_width=True,
+            width="stretch",
         )
         st.markdown("---")
 
