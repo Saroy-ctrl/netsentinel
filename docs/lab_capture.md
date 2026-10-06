@@ -208,37 +208,31 @@ print(f"Normalized {len(df_out)} flows written to {output_replay_path}")
 
 ### Phase 4: Replay Execution via `replay/replay.py`
 
-Once `lab_nmap_scan.csv` is generated, it can be streamed through the replay engine in either mock mode or against a live API instance.
+Once `lab_nmap_scan.csv` is generated, it is streamed through the replay engine against a live API instance. (`--mock` only produces SIMULATED output copied from the labels; never use it for results.)
 
-#### Mode A: Standalone Mock Replay (In-Process Scoring)
-```bash
-python replay/replay.py --file replay/samples/lab_nmap_scan.csv --speed 1.0 --bundle netsentinel-bundle --mock
-```
-* **Output:** Displays batch progression, flow pacing, confusion matrix, detected verdicts, and ground-truth metrics without requiring an active network daemon.
-
-#### Mode B: Live API Streaming
+#### Live API Streaming
 1. Start the NetSentinel API:
    ```bash
-   uvicorn api.app.main:app --port 8000
+   uvicorn api.app.main:app --host 127.0.0.1 --port 8000
    ```
 2. Stream flows through the replay CLI:
    ```bash
-   python replay/replay.py --file replay/samples/lab_nmap_scan.csv --speed 1.0 --bundle netsentinel-bundle --api-url http://localhost:8000 --api-key change-me
+   python replay/replay.py --file replay/samples/lab_nmap_scan.csv --speed 1.0 --bundle cic-v1 --api-url http://127.0.0.1:8000   # NS_API_KEY / NS_ADMIN_KEY from the environment
    ```
 
-#### Mode C: Declarative Scenario Definition
+#### Declarative Scenario Definition
 Optionally define a scenario YAML file `replay/scenarios/lab_nmap_scan.yaml`:
 ```yaml
 name: lab_nmap_scan
 description: Own-lab host-only VM Nmap port scan (M5-07 stretch)
 file: lab_nmap_scan.csv
-bundle: netsentinel-bundle
+bundle: cic-v1
 speed: 1.0
 batch_size: 250
 ```
 Then execute:
 ```bash
-python replay/replay.py --scenario lab_nmap_scan --mock
+python replay/replay.py --scenario lab_nmap_scan
 ```
 
 ---

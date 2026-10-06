@@ -243,7 +243,7 @@ class ReplayEngine:
         times: list[float],
         speed: float = 1.0,
         batch_size: int = DEFAULT_BATCH_SIZE,
-        api_url: str = "http://localhost:8000",
+        api_url: str = "http://127.0.0.1:8000",
         api_key: str = "change-me",
         scenario_name: str = "custom",
         file_path: str = "",
@@ -280,6 +280,8 @@ class ReplayEngine:
         self.incidents_created = 0
         self.incidents_updated = 0
         self.gt_counts: dict[str, int] = {}
+        self.outliers = 0
+        self.outliers_flagged = 0
 
     def _send_batch_http(self, batch: FlowBatch) -> ScoreBatchResponse:
         import httpx
@@ -391,7 +393,11 @@ class ReplayEngine:
                 else:
                     self.detected_benign += 1
 
-                if is_gt_attack and is_pred_attack:
+                if gt.lower() == "outlier":
+                    # LUFlow "outlier" = unexplained, not a confirmed attack: kept out of precision / recall
+                    self.outliers += 1
+                    self.outliers_flagged += int(is_pred_attack)
+                elif is_gt_attack and is_pred_attack:
                     self.tp += 1
                 elif not is_gt_attack and is_pred_attack:
                     self.fp += 1
@@ -409,7 +415,8 @@ class ReplayEngine:
                 print(
                     f"[{b_idx+1:>3}/{num_batches}] Sent {sent_so_far:>6,}/{self.total_flows:,} flows ({pct:>5.1f}%) "
                     f"| Detections: {self.detected_known} Known, {self.detected_novel} Novel, {self.detected_benign} Benign "
-                    f"| Precision: {prec:>5.1f}% | Recall: {rec:>5.1f}%"
+                    + (f"| Precision: {prec:>5.1f}% | Recall: {rec:>5.1f}%" if self.tp + self.fn
+                       else f"| False alarms: {self.fp} of {self.fp + self.tn:,} benign")
                 )
 
         elapsed = max(time.time() - start_time, 0.001)
@@ -449,7 +456,16 @@ class ReplayEngine:
             print(f"Flows Replayed : {summary.total_flows:,} in {summary.elapsed_seconds:.2f}s ({summary.throughput_fps:,.0f} flows/s)")
             print(f"Detections     : {summary.detected_known:,} Known | {summary.detected_novel:,} Novel | {summary.detected_benign:,} Benign")
             print(f"Incidents      : {summary.incidents_created:,} Created, {summary.incidents_updated:,} Updated")
-            print(f"Precision      : {summary.precision * 100:.2f}% | Recall: {summary.recall * 100:.2f}% | F1: {summary.f1:.4f}")
+            attacks, benign = self.tp + self.fn, self.fp + self.tn
+            if attacks:
+                print(f"Precision      : {summary.precision * 100:.2f}% | Recall: {summary.recall * 100:.2f}% | F1: {summary.f1:.4f}")
+            else:
+                print("Precision      : n/a (no attack flows in this replay)")
+            if benign:
+                print(f"False alarms   : {self.fp:,} of {benign:,} benign flows ({self.fp / benign * 100:.2f}%)")
+            if self.outliers:
+                print(f"Outliers       : {self.outliers_flagged:,} of {self.outliers:,} unexplained flows flagged "
+                      "(not counted in precision / recall)")
             print(f"Ground Truth   : {dict(summary.gt_counts)}")
             print("--------------------------------------------------------------------------------\n")
 
@@ -462,7 +478,7 @@ def run_replay(
     speed: float | None = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     max_flows: int | None = None,
-    api_url: str = "http://localhost:8000",
+    api_url: str = "http://127.0.0.1:8000",
     api_key: str = "change-me",
     bundle: str | None = None,
     mock: bool = False,
@@ -545,7 +561,7 @@ def main() -> None:
     parser.add_argument(
         "--api-url",
         type=str,
-        default=os.getenv("NS_API_URL", "http://localhost:8000"),
+        default=os.getenv("NS_API_URL", "http://127.0.0.1:8000"),
         help="FastAPI base URL",
     )
     parser.add_argument(

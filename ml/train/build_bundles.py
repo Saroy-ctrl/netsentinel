@@ -140,11 +140,12 @@ def main() -> None:
     imp = ex.global_importance(Xv[np.random.default_rng(SEED).choice(atk_idx, min(1000, len(atk_idx)), replace=False)])
     (tmp / "global_importance.json").write_text(json.dumps(imp, indent=1), encoding="utf-8")
 
+    benign_train = train[train["family"] == "BENIGN"]  # drift is measured on benign traffic (api drift.py)
     man = build_bundle(
         out, version=version, spec_path=SPECS["cic"], transformer=tr, rf_binary=m.rf_bin, rf_multiclass=m.rf_fam,
         thresholds={"tau_binary": tau["tau_binary"], "tau_family": tau["tau_family"], "operating_fpr": a.budget},
-        drift_reference=build_reference(tr.transform(train.sample(min(len(train), 1_000_000), random_state=SEED)),
-                                        tr.feature_names),
+        drift_reference=build_reference(tr.transform(benign_train.sample(min(len(benign_train), 1_000_000),
+                                                                         random_state=SEED)), tr.feature_names),
         baseline_stats=json.loads((CONTRACTS / "baselines" / "cic.json").read_text(encoding="utf-8")),
         dataset="CSE-CIC-IDS2018 (corrected, Liu/Engelen et al. 2022)", split_strategy=report.split_strategy,
         metrics_summary={"test_precision_natural": binr["precision"], "test_recall": binr["recall"],

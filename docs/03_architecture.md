@@ -282,9 +282,9 @@ CREATE INDEX ix_inc_key  ON incidents(src_ip, dst_ip, attack_family, last_seen);
 Benign flows: keep at most N recent ones (configurable), because drift only needs the rolling window.
 
 ### 4.6 Drift monitor
-- Rolling window of the last 2,000 transformed flows. Every 500 flows it computes PSI for each of the top-15 features against the **loaded bundle's** `drift_reference.json`, plus the predicted attack rate compared with the reference rate.
+- Rolling window of the last 2,000 flows **the model calls benign**. Every 500 flows it computes PSI per feature against the **loaded bundle's** `drift_reference.json`, which is built from **benign training flows only**, plus the predicted attack rate over all flows. It answers "does normal traffic still look like what the model learned?"; attacks are reported as incidents. (A reference mixing in the training attacks made random normal traffic read PSI 1.36 = ALERT; benign-only reads 0.02.) Fewer than 200 benign flows in the window (an attack burst): no new snapshot.
 - Status: max PSI < 0.10 is `ok`, < 0.25 is `watch`, anything higher is `alert`. Each check writes a snapshot. Alert status shows a "consider recalibrating" banner linked to `docs/runbook_retrain.md`.
-- Within 2018 the benign traffic is scripted, so expect little drift there. **The real drift story is LUFlow**: replaying a later month through the LUFlow bundle pushes PSI to `alert`, and the recalibrated bundle brings it back.
+- Within 2018 a short replay slice can still read `watch`/`alert` on timing features (one busy 72-second slice vs a 10-day average: max PSI ~0.30). **The real drift story is LUFlow**: February 2021 through the June-July 2020 bundle reads `alert` (max PSI 0.33) while detection holds (precision 98.6%, recall 99.9%). The recalibrated bundle does not lower PSI and did not improve detection (`docs/experiments.md` §8).
 
 ### 4.7 Brief service (Azure OpenAI)
 - Input: structured incident JSON only (family, verdict, confidence band, risk level, flow count, top features with raw values and benign medians, MITRE ID, IPs and port). No raw payloads.

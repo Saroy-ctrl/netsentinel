@@ -213,14 +213,14 @@ Grouped bar chart / table summarizing LOAO results ([docs/experiments.md](experi
    0.10 ── WATCH THRESHOLD ──────── [0.10 Oct] ────────────────────────── [0.10 Feb]
    0.00 ──
   ```
-- **Demo Recovery Path:** Reloading `netsentinel-luflow-recal` in the replay scenario demonstrates the intended drift-recovery workflow.
+- **Drift is a warning light, not a failure:** in every drifted month the frozen model kept ~99.8% recall with benign FPR near its budget (live demo, Feb 2021: precision 98.6%, recall 99.9%).
 
 ### Key Bullet Points
 - **Measured on Live Telemetry:** Max feature PSI crossed the 0.25 alert line in July (0.39) and December (0.36) 2020.
-- **Label-Free Recalibration:** Demonstrates that models can be recalibrated on a recent window of benign traffic without expensive manual labeling.
+- **Label-Free Recalibration (tested, no gain):** refitting thresholds on a recent benign window needs no labels, but on LUFlow it moved FPR a few tenths of a percent either way, so we do not claim it as a recovery.
 
 ### Presenter Notes (25s)
-> *"Model drift is an explicit competition requirement. On LUFlow honeypots, we measured authentic temporal drift: feature PSI crossed our 0.25 alert threshold in July and December. Our system flashes a drift alert, operators trigger label-free recalibration on recent benign traffic, and monitoring returns to normal. We don't just discuss drift—we measure it and recover from it."*
+> *"Model drift is an explicit competition requirement. On LUFlow honeypots, we measured authentic temporal drift: feature PSI crossed our 0.25 alert threshold in July and December. Our system flashes a drift alert, and we checked what that alert means: detection held at about 99% precision and recall through the drifted months. Drift tells the operator to re-check the model; it is not proof the model broke. We measure drift instead of assuming it."*
 
 ---
 

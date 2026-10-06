@@ -84,7 +84,11 @@ det = DetectionEngine(bundle).detect(flows_df)             # verdict, p_attack, 
 | Foundation (contracts, policy, fixtures, CI) | done |
 | **M1** Data & Features | **done, merged** (#6): cleaned datasets, splits, feature specs, PSI, replay samples |
 | **M2** ML Modeling & MLOps | **done, merged** (#7): models, evaluation, SHAP, bundles, Azure ML registry code, model card. Real Azure registration still needs the team's subscription |
-| M3 Backend, M4 Console, M5 Security/GenAI/Demo | not started: see [docs/04_tasks.md](docs/04_tasks.md) and issues #3, #4, #5 |
+| **M3** Backend & Platform | **done, merged** (#11, fixes #10, #13): API, correlator, drift monitor, auth, Docker/ACA assets |
+| **M4** SOC Console | **done, merged** (#9, fix #12): Streamlit console, five pages |
+| **M5** Security, GenAI & Demo | **on branch `final`**: Azure OpenAI briefs with template fallback, brief evaluation, replay engine + 5 live-tested demo acts, threat model, demo script, pitch |
+
+Run the demo: [docs/demo_script.md](docs/demo_script.md) (API + dashboard + replay, all local; every number in it comes from a live run).
 
 Headline numbers (test split, details and limits in the model card): 99.99% attack recall at a 0.1% benign false-alarm budget on known
 attacks; on attacks held out of training, floods/DoS tools 100%, DoS/DDoS families 79-85%, botnet 66% (99% at a 0.5% budget), while internal

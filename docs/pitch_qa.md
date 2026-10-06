@@ -170,7 +170,7 @@
   - 2020-06: 0.14 (`watch`) | 2020-07: **0.39 (`alert`)** | 2020-08: 0.20 (`watch`)
   - 2020-09: 0.14 (`watch`) | 2020-10: 0.10 (`watch`) | 2020-11: 0.18 (`watch`)
   - 2020-12: **0.36 (`alert`)** | 2021-01: 0.12 (`watch`) | 2021-02: 0.10 (`watch`)
-- **Demo Recovery Path:** In the demo (Act 5), reloading `netsentinel-luflow-recal` in the replay scenario demonstrates the intended drift-recovery workflow—refitting thresholds and Isolation Forests on an unlabelled recent benign window and restoring PSI back to `OK`.
+- **Recalibration, honestly:** `luflow-recal` refits the thresholds and Isolation Forest on an unlabelled recent benign window. It does not change PSI (drift is measured against the training reference) and on LUFlow it did not improve detection, so the demo shows the ALERT and the fact that detection held, not a recovery.
 
 ### Repository Citations
 - [nscore/drift/psi.py](../nscore/drift/psi.py) (PSI Implementation)
