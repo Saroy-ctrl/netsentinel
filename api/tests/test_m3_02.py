@@ -1,10 +1,12 @@
 import os
-import sqlite3
-import pytest
 import tempfile
+
+import pytest
+
 from api.app.db import get_connection
 from api.app.repository import Repository
 from scripts.init_db import init_db
+
 
 @pytest.fixture
 def temp_db():

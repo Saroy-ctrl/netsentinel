@@ -26,10 +26,8 @@ Run the deployment script from the `infra/` directory:
 ```
 
 ## GitHub Actions CI/CD
-The repository includes a `.github/workflows/ci.yml` file.
-
-- **CI (Test Job):** Runs `ruff` linting and `pytest` automatically on PRs and pushes to `main` and `feature/m3-backend-platform`.
-- **CD (Deploy Azure Job):** Triggers only on `main` branch or manual dispatch. Pushes images to ACR and updates the ACA instances.
+- **`.github/workflows/ci.yml` (CI):** on every PR and push to `main`: `ruff`, the contract-fixtures check, the full `pytest` suite (`tests/` and `api/tests/`) and a secret scan.
+- **`.github/workflows/deploy.yml` (CD):** manual only (Actions tab -> deploy -> Run workflow). Builds the API and dashboard images, pushes them to ACR and updates the container apps.
 
 **Required GitHub Secrets for CD:**
 - `AZURE_CREDENTIALS`: A JSON payload from an Azure Service Principal with Contributor access.

@@ -129,8 +129,7 @@ async def missing_features_handler(request: Request, exc: MissingFeaturesError):
 # ---------------------------------------------------------------------------
 
 def verify_api_key(x_api_key: str | None = Header(None)):
-    if _is_mock():
-        return x_api_key or "mock_key"
+    # Always enforced: mock mode swaps the scoring backend, never the authentication.
     expected_key = os.environ.get("NS_API_KEY", "test_api_key")
     if not x_api_key or x_api_key != expected_key:
         raise HTTPException(status_code=403, detail="Forbidden: Invalid or missing API key")
@@ -313,6 +312,7 @@ def get_incidents(
             item_dict.pop("brief_json", None)
             item_dict.pop("acknowledged_at", None)
             item_dict.pop("updated_at", None)
+            item_dict.pop("shap_n", None)
             items.append(schemas.IncidentSummary.model_validate(item_dict))
             
         return schemas.IncidentPage(items=items, total=total, limit=limit, offset=offset)
@@ -336,6 +336,7 @@ def get_incident(incident_id: str):
         item_dict["mitre_technique_name"] = item_dict.pop("mitre_name", None)
         item_dict.pop("acknowledged_at", None)
         item_dict.pop("updated_at", None)
+        item_dict.pop("shap_n", None)
         
         tf_json = item_dict.pop("top_features_json", None)
         if tf_json:

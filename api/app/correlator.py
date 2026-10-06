@@ -82,8 +82,11 @@ def _aggregate_top_features(
         except Exception as exc:
             logger.warning("Correlator: failed to parse existing top_features_json: %s", exc)
 
-    # Incorporate new contributions (1 flow)
-    new_count = old_count + 1
+    # Incorporate new contributions (1 explained flow). old_count = flows explained so far, NOT flows merged: when
+    # the scorer explains only a sample of a large batch, unexplained flows must not dilute the mean.
+    new_count = old_count + (1 if new_contributions else 0)
+    if new_count == 0:
+        return []
     for fc in new_contributions:
         name = fc.feature
         shap_val = float(fc.shap_value)
@@ -148,7 +151,7 @@ class IncidentCorrelator:
         cur = conn.execute(
             """
             SELECT incident_id, status, verdict, attack_family, severity,
-                   max_confidence, flow_count, first_seen, last_seen, top_features_json
+                   max_confidence, flow_count, first_seen, last_seen, top_features_json, shap_n
             FROM incidents
             WHERE src_ip = ?
               AND dst_ip = ?
@@ -173,6 +176,7 @@ class IncidentCorrelator:
                 inc_first_seen_str,
                 inc_last_seen_str,
                 inc_top_json,
+                inc_shap_n,
             ) = row
 
             inc_last_seen = _parse_utc_datetime(inc_last_seen_str)
@@ -188,11 +192,10 @@ class IncidentCorrelator:
                 new_last_seen_str = new_last_seen_dt.isoformat()
 
                 # Recompute top 5 aggregated SHAP features
-                aggregated_top = _aggregate_top_features(
-                    inc_top_json,
-                    inc_flow_count,
-                    top_features,
-                )
+                # rows written before shap_n existed: every merged flow carried SHAP, so flow_count is the denominator
+                explained_before = inc_shap_n or (inc_flow_count if inc_top_json else 0)
+                aggregated_top = _aggregate_top_features(inc_top_json, explained_before, top_features)
+                new_shap_n = explained_before + (1 if top_features else 0)
                 new_top_json = json.dumps(aggregated_top)
 
                 # Recompute risk score with burst factor for updated flow_count
@@ -216,6 +219,7 @@ class IncidentCorrelator:
                         severity = ?,
                         last_seen = ?,
                         top_features_json = ?,
+                        shap_n = ?,
                         mitre_id = ?,
                         mitre_name = ?,
                         risk_score = ?,
@@ -229,6 +233,7 @@ class IncidentCorrelator:
                         new_severity,
                         new_last_seen_str,
                         new_top_json,
+                        new_shap_n,
                         mitre_id,
                         mitre_name,
                         new_risk_score,
@@ -259,8 +264,8 @@ class IncidentCorrelator:
                 mitre_id, mitre_name, risk_score, risk_level, severity, max_confidence,
                 flow_count, src_ip, dst_ip, dst_port,
                 first_seen, last_seen,
-                top_features_json, model_version, updated_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                top_features_json, model_version, updated_at, shap_n
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 incident_id,
@@ -282,6 +287,7 @@ class IncidentCorrelator:
                 top_json,
                 model_version,
                 now_str,
+                1 if top_features else 0,
             ),
         )
         return incident_id, 1, 0

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from datetime import UTC, datetime
 
@@ -29,6 +30,17 @@ from nscore.contracts.schemas import AttackFamily, Verdict
 from nscore.detection.engine import DetectionEngine
 
 logger = logging.getLogger(__name__)
+
+# Exact TreeSHAP costs roughly 10-100 ms per flow, so a 500-flow attack batch would take seconds. Only the most
+# suspicious flows of a batch are explained; the rest are still scored, persisted and correlated (model card §3).
+DEFAULT_SHAP_MAX_PER_BATCH = 25
+
+
+def _shap_cap() -> int:
+    try:
+        return max(0, int(os.environ.get("NS_SHAP_MAX_PER_BATCH", DEFAULT_SHAP_MAX_PER_BATCH)))
+    except ValueError:
+        return DEFAULT_SHAP_MAX_PER_BATCH
 
 
 def _now_iso() -> str:
@@ -89,6 +101,9 @@ class ScoringService:
         non_benign_idx = [
             i for i, v in enumerate(det.verdict) if v is not Verdict.BENIGN
         ]
+        cap = _shap_cap()
+        if len(non_benign_idx) > cap:  # keep the most suspicious flows, in their original order
+            non_benign_idx = sorted(sorted(non_benign_idx, key=lambda i: -float(det.p_attack[i]))[:cap])
         contributions: list[list[schemas.FeatureContribution]] = [
             [] for _ in flow_records
         ]
@@ -175,12 +190,13 @@ class ScoringService:
                 )
             )
 
-        # Feed transformed matrix into the drift monitor (M3-08)
+        conn.commit()
+
+        # Feed the drift monitor only AFTER the commit: it persists snapshots on its own connection, which blocks
+        # ("database is locked") while this connection still holds uncommitted writes. (M3-08)
         if drift_monitor is not None and det.X is not None:
             verdict_strs = [det.verdict[i].value for i in range(len(flow_records))]
             drift_monitor.observe(det.X, verdict_strs)
-
-        conn.commit()
 
         return schemas.ScoreBatchResponse(
             received=len(flow_records),

@@ -1,87 +1,36 @@
-name: CI/CD Pipeline
-
+name: ci
 on:
-  push:
-    branches:
-      - main
-      - feature/m3-backend-platform
   pull_request:
-    branches:
-      - main
-      - feature/m3-backend-platform
-  workflow_dispatch:
+  push:
+    branches: [main]
+
+# gitleaks lists the PR's commits via the API; the default token has no pull-requests scope (403 on PRs)
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
-  test:
-    name: Run Linting and Tests
+  lint-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-          
-      # - name: Install Dependencies
-      #   run: |
-      #     pip install --upgrade pip
-      #     pip install -r requirements-api.txt -r requirements-dashboard.txt pytest ruff
-
-      - name: Install Dependencies
-  run: |
-    python -m pip install --upgrade pip
-    pip install -r requirements-api.txt
-    pip install -r requirements-dashboard.txt
-    pip install pytest ruff
-            
-      - name: Run Ruff Linter
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt -r requirements-api.txt
+      - run: ruff check .
+      - name: fixtures are up to date with contracts
         run: |
-          ruff check .
-          
-      - name: Run Pytest
-        run: |
-          pytest api/tests/
+          python -m nscore.contracts.fixtures.make_fixtures
+          git diff --exit-code nscore/contracts/fixtures/
+      - run: pytest -q   # tests/ and api/tests/ (see pyproject testpaths)
 
-  deploy-azure:
-    name: Deploy to Azure Container Apps
-    needs: test
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+  secrets:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        
-      - name: Azure Login
-        uses: azure/login@v2
+      - uses: actions/checkout@v4
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-          
-      - name: Login to ACR
-        run: |
-          az acr login --name ${{ secrets.ACR_NAME }}
-          
-      - name: Build and Push API Image
-        run: |
-          docker build -f Dockerfile.api -t ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-api:${{ github.sha }} .
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-api:${{ github.sha }}
-          
-      - name: Build and Push Dashboard Image
-        run: |
-          docker build -f Dockerfile.dashboard -t ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-dashboard:${{ github.sha }} .
-          docker push ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-dashboard:${{ github.sha }}
-          
-      - name: Deploy API to ACA
-        uses: azure/container-apps-deploy-action@v2
-        with:
-          resourceGroup: ${{ secrets.AZURE_RG }}
-          containerAppName: netsentinel-api
-          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-api:${{ github.sha }}
-          
-      - name: Deploy Dashboard to ACA
-        uses: azure/container-apps-deploy-action@v2
-        with:
-          resourceGroup: ${{ secrets.AZURE_RG }}
-          containerAppName: netsentinel-dashboard
-          imageToDeploy: ${{ secrets.ACR_NAME }}.azurecr.io/netsentinel-dashboard:${{ github.sha }}
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

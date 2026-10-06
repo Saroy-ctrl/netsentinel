@@ -10,7 +10,7 @@ Isolation guarantees
 --------------------
 - NS_DB_PATH patched per-test; never touches netsentinel.db
 - NS_MOCK is never set — real scoring path is exercised
-- app.state.bundle + app.state.scorer are injected directly (no reload)
+- app.state.model_ctx (bundle + scorer) is injected directly (no reload)
 - All 21 existing tests remain unaffected
 """
 from __future__ import annotations
@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from api.tests.helpers import AUTH_HEADERS
 from nscore.bundle.loader import load_bundle
 from nscore.contracts import schemas
 from nscore.contracts.schemas import Verdict
@@ -57,25 +58,22 @@ def db_path(tmp_path: Path) -> str:
 @pytest.fixture()
 def scoring_client(real_bundle, db_path: str):
     """TestClient with real bundle and isolated DB injected."""
-    from api.app.main import app
+    from api.app.main import ModelContext, app
     from api.app.scoring import ScoringService
 
-    prior_bundle = getattr(app.state, "bundle", None)
-    prior_scorer = getattr(app.state, "scorer", None)
+    prior_ctx = getattr(app.state, "model_ctx", None)
 
-    app.state.bundle = real_bundle
-    app.state.scorer = ScoringService(real_bundle)
+    app.state.model_ctx = ModelContext(real_bundle, ScoringService(real_bundle), None)
 
     # Point all DB operations at the test DB via the env var read at request time
     prev_db = os.environ.get("NS_DB_PATH")
     os.environ["NS_DB_PATH"] = db_path
 
-    client = TestClient(app, raise_server_exceptions=True)
+    client = TestClient(app, raise_server_exceptions=True, headers=AUTH_HEADERS)
     yield client, db_path
 
     # Restore
-    app.state.bundle = prior_bundle
-    app.state.scorer = prior_scorer
+    app.state.model_ctx = prior_ctx
     if prev_db is not None:
         os.environ["NS_DB_PATH"] = prev_db
     else:
@@ -270,10 +268,10 @@ class TestMockModePreserved:
         """When NS_MOCK=1 and no scorer is active, score_flows returns the fixture result (M3-01 behavior)."""
         import os
 
-        from api.app.main import app
+        from api.app.main import ModelContext, app
 
-        prior_scorer = getattr(app.state, "scorer", None)
-        app.state.scorer = None
+        prior_ctx = getattr(app.state, "model_ctx", None)
+        app.state.model_ctx = ModelContext()
         prev_mock = os.environ.get("NS_MOCK")
         os.environ["NS_MOCK"] = "1"
         try:
@@ -290,13 +288,13 @@ class TestMockModePreserved:
                 },
                 "features": {"fwd_pkt_len_max": 100.0},
             }
-            resp = client.post("/v1/flows", json={"flows": [flow]})
+            resp = client.post("/v1/flows", json={"flows": [flow]}, headers=AUTH_HEADERS)
             assert resp.status_code == 200
             data = resp.json()
             assert data["received"] == 1
             schemas.ScoreBatchResponse.model_validate(data)
         finally:
-            app.state.scorer = prior_scorer
+            app.state.model_ctx = prior_ctx
             if prev_mock is not None:
                 os.environ["NS_MOCK"] = prev_mock
             else:

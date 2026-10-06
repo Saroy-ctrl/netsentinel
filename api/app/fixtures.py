@@ -7,7 +7,7 @@ from nscore.contracts import schemas
 FIXTURES_DIR = Path(__file__).parent.parent.parent / "nscore" / "contracts" / "fixtures"
 
 def load_fixture(filename: str) -> dict[str, Any]:
-    with open(FIXTURES_DIR / filename, "r") as f:
+    with open(FIXTURES_DIR / filename) as f:
         return json.load(f)
 
 def get_model_info() -> schemas.ModelInfo:

@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app.main import app
+from api.tests.helpers import one_flow_batch
 
 client = TestClient(app)
 
@@ -22,19 +23,19 @@ def test_cors_headers(test_client):
     )
     assert response.status_code == 200
     assert "access-control-allow-origin" in response.headers
-    assert response.headers["access-control-allow-origin"] == "http://localhost:3000" or response.headers["access-control-allow-origin"] == "*"
+    assert response.headers["access-control-allow-origin"] in ("http://localhost:3000", "*")
 
 def test_ingest_auth(test_client):
     # No header
-    response = test_client.post("/v1/flows", json={"flows": []})
+    response = test_client.post("/v1/flows", json=one_flow_batch())
     assert response.status_code == 403
 
     # Invalid header
-    response = test_client.post("/v1/flows", json={"flows": []}, headers={"x-api-key": "invalid"})
+    response = test_client.post("/v1/flows", json=one_flow_batch(), headers={"x-api-key": "invalid"})
     assert response.status_code == 403
 
     # Valid header (Mock mode returns 200/empty result without caring about flow content usually)
-    response = test_client.post("/v1/flows", json={"flows": []}, headers={"x-api-key": "test_api_key"})
+    response = test_client.post("/v1/flows", json=one_flow_batch(), headers={"x-api-key": "test_api_key"})
     assert response.status_code == 200
 
 def test_analyst_header_format(test_client):
@@ -45,11 +46,12 @@ def test_analyst_header_format(test_client):
     assert response.status_code == 422
     
     # Invalid format (no plus)
-    response = test_client.post(f"/v1/incidents/{incident_id}/actions", json={"action": "acknowledge", "note": "test"}, headers={"x-analyst": "John Doe Tier 1"})
+    url, body = f"/v1/incidents/{incident_id}/actions", {"action": "acknowledge", "note": "test"}
+    response = test_client.post(url, json=body, headers={"x-analyst": "John Doe Tier 1"})
     assert response.status_code == 422
 
     # Valid format
-    response = test_client.post(f"/v1/incidents/{incident_id}/actions", json={"action": "acknowledge", "note": "test"}, headers={"x-analyst": "John Doe + Tier 1"})
+    response = test_client.post(url, json=body, headers={"x-analyst": "John Doe + Tier 1"})
     assert response.status_code == 200
 
 def test_structured_log_and_request_id(test_client, caplog):
@@ -71,7 +73,7 @@ def test_structured_log_and_request_id(test_client, caplog):
 
 def test_missing_features_422_formatting(test_client, monkeypatch):
     # To test this, we need to trigger MissingFeaturesError.
-    # In mock mode, /v1/flows doesn't use the scorer. We need to disable mock for this route or directly test the exception handler.
+    # In mock mode /v1/flows does not use the scorer, so the exception handler is exercised directly.
     # Since we just want to verify the exception handler works:
     import asyncio
 

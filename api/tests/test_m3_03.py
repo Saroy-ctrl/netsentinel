@@ -1,7 +1,7 @@
 """M3-03 tests: real bundle loading at startup.
 
 Builds a temporary mock-cic bundle via make_mock_bundle.build(), directly
-injects it into app.state.bundle, and verifies that /health, /v1/model, and
+injects it into app.state.model_ctx, and verifies that /health, /v1/model, and
 /v1/model/evaluation are served from the real bundle rather than the NS_MOCK=1
 fixture.
 
@@ -11,7 +11,7 @@ Isolation guarantees
   state that test_mock_api.py depends on.
 - The bundle is injected directly into app.state so it takes priority over the
   _is_mock() check (bundle check comes first in every endpoint).
-- After the fixture scope ends, app.state.bundle is restored to its prior value.
+- After the fixture scope ends, app.state.model_ctx is restored to its prior value.
 - NS_MOCK is never permanently altered by this module.
 """
 
@@ -24,7 +24,6 @@ from fastapi.testclient import TestClient
 
 from nscore.bundle.loader import load_bundle
 from nscore.contracts import schemas
-
 
 # ---------------------------------------------------------------------------
 # Session-scoped bundle fixture (build once, re-use across all tests here)
@@ -63,11 +62,11 @@ def bundle_client(real_bundle):
     The three M3-03 endpoints check _bundle() before _is_mock(), so the real
     bundle is always served regardless of NS_MOCK.
     """
-    from api.app.main import app
+    from api.app.main import ModelContext, app
 
     # Preserve whatever state was there (None if lifespan hasn't run)
-    prior = getattr(app.state, "bundle", None)
-    app.state.bundle = real_bundle
+    prior = getattr(app.state, "model_ctx", None)
+    app.state.model_ctx = ModelContext(bundle=real_bundle)
 
     # Use TestClient without context manager so lifespan doesn't overwrite
     # app.state.bundle with a load from MODEL_REF / the default path.
@@ -75,7 +74,7 @@ def bundle_client(real_bundle):
     yield client
 
     # Restore previous state so other test modules are unaffected
-    app.state.bundle = prior
+    app.state.model_ctx = prior
 
 
 # ---------------------------------------------------------------------------

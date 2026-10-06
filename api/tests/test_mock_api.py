@@ -1,14 +1,16 @@
-import os
 import pytest
 from fastapi.testclient import TestClient
 
-# Set NS_MOCK before importing the app
-os.environ["NS_MOCK"] = "1"
-
 from api.app.main import app
+from api.tests.helpers import AUTH_HEADERS
 from nscore.contracts import schemas
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _mock_mode(monkeypatch):
+    monkeypatch.setenv("NS_MOCK", "1")
 
 def test_health():
     response = client.get("/health")
@@ -46,7 +48,7 @@ def test_score_flows():
             "fwd_pkt_len_max": 100
         }
     }
-    response = client.post("/v1/flows", json={"flows": [flow]}, headers={"X-API-Key": "test-key"})
+    response = client.post("/v1/flows", json={"flows": [flow]}, headers=AUTH_HEADERS)
     assert response.status_code == 200
     schemas.ScoreBatchResponse.model_validate(response.json())
 
@@ -66,13 +68,13 @@ def test_add_incident_action():
     response = client.post(
         "/v1/incidents/inc-123/actions", 
         json={"action": "acknowledge"}, 
-        headers={"X-Analyst": "analyst-1"}
+        headers={"X-Analyst": "analyst-1 + Analyst"}
     )
     assert response.status_code == 200
     data = response.json()
     assert data["incident_id"] == "inc-123"
     assert data["action"] == "acknowledge"
-    assert data["analyst"] == "analyst-1"
+    assert data["analyst"] == "analyst-1 + Analyst"
     schemas.AnalystActionRecord.model_validate(data)
 
 def test_get_incident_brief():
@@ -91,6 +93,7 @@ def test_get_metrics():
     schemas.LiveMetrics.model_validate(response.json())
 
 def test_reload_model():
-    response = client.post("/v1/admin/reload-model", json={"model_ref": "azureml:netsentinel-bundle:2"})
+    response = client.post("/v1/admin/reload-model", json={"model_ref": "azureml:netsentinel-bundle:2"},
+                           headers=AUTH_HEADERS)
     assert response.status_code == 200
     schemas.ModelInfo.model_validate(response.json())
