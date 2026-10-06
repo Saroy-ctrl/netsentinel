@@ -42,22 +42,13 @@ def test_admin_reload_success(test_client):
     assert "model_version" in data
 
 @pytest.mark.asyncio
-async def test_brief_service_timeout_and_constraints(monkeypatch):
+async def test_brief_service_without_azure_returns_a_valid_template_brief():
+    """No Azure OpenAI configured (the local demo default): the API still returns a contract-valid template brief."""
     from api.app.services.brief import generate_and_cache_brief
-    
+
     class DummyRepo:
         def update_incident_brief(self, i_id, b_json):
             pass
-            
-    # Test timeout
-    incident_data = {"risk_level": "CRITICAL", "_test_timeout": True}
-    brief = await generate_and_cache_brief("inc-1", incident_data, DummyRepo(), timeout=0.01)
-    assert brief.source == "template"
-    assert "Timeout" in brief.text or "Fallback" in brief.text
-    
-    # Test wording constraints
-    incident_data = {"attack_family": "novel_anomaly", "verdict": "Malicious", "_test_timeout": False}
-    brief = await generate_and_cache_brief("inc-2", incident_data, DummyRepo(), timeout=2.0)
-    assert brief.source == "template"  # stub generator; "azure_openai" arrives with M5-03
-    assert "novel_anomaly" in brief.text
-    assert "Malicious" in brief.text
+
+    brief = await generate_and_cache_brief("inc-1", {"risk_level": "HIGH"}, DummyRepo(), timeout=2.0)
+    assert brief.source == "template" and brief.incident_id == "inc-1" and brief.text

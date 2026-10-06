@@ -6,14 +6,12 @@ category rules, and determinism checks.
 
 from __future__ import annotations
 
-import pytest
-
+from api.app.services.brief import generate_brief
 from api.app.services.brief_eval import (
     build_10_eval_incidents,
     evaluate_single_brief,
     run_all_evaluations,
 )
-from api.app.services.brief import generate_brief
 
 
 def test_all_10_eval_incidents_pass():

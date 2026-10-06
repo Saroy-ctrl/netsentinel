@@ -147,3 +147,19 @@ def test_brief_source_satisfies_the_contract():
     brief = asyncio.run(generate_and_cache_brief("inc-1", {"risk_level": "HIGH"}, Repo(), timeout=2.0))
     schemas.Brief.model_validate(brief.model_dump())  # raises if `source` is not an allowed literal
     assert brief.source in ("azure_openai", "template")
+
+
+def test_keys_fail_closed_when_not_configured(monkeypatch):
+    """No NS_API_KEY / NS_ADMIN_KEY on the server: refuse, never accept a well-known default."""
+    from fastapi.testclient import TestClient
+
+    from api.app.main import app
+    from api.tests.helpers import one_flow_batch
+
+    monkeypatch.setenv("NS_MOCK", "1")
+    monkeypatch.delenv("NS_API_KEY")
+    monkeypatch.delenv("NS_ADMIN_KEY")
+    c = TestClient(app)
+    old_defaults = {"x-api-key": "test_api_key", "x-admin-key": "admin_secret"}
+    assert c.post("/v1/flows", json=one_flow_batch(), headers=old_defaults).status_code == 503
+    assert c.post("/v1/admin/reload-model", json={"model_ref": "local:x"}, headers=old_defaults).status_code == 503

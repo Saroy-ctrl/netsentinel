@@ -9,7 +9,6 @@ Supports mock/offline mode for testing without requiring a live FastAPI server.
 from __future__ import annotations
 
 import argparse
-import gzip
 import logging
 import os
 import sys
@@ -149,10 +148,17 @@ def load_flow_records(
     return records, times
 
 
+class ReplayError(RuntimeError):
+    """The live API could not score a batch. Raised instead of silently substituting simulated results."""
+
+
+SIMULATED_LABEL = "SIMULATED: verdicts copied from ground-truth labels, NOT model output"
+
+
 def mock_score_batch(
     batch: FlowBatch, bundle: str = "netsentinel-bundle"
 ) -> ScoreBatchResponse:
-    """Deterministic in-process scoring for mock mode or offline demo runs."""
+    """Simulated scoring for --mock / --dry-run ONLY: verdicts are derived from ground truth, never shown as results."""
     results: list[ScoreResult] = []
 
     for flow in batch.flows:
@@ -241,10 +247,11 @@ class ReplayEngine:
         api_key: str = "change-me",
         scenario_name: str = "custom",
         file_path: str = "",
-        bundle: str = "netsentinel-bundle",
+        bundle: str = "cic-v1",
         mock: bool = False,
         dry_run: bool = False,
         verbose: bool = True,
+        admin_key: str | None = None,
     ):
         self.flows = flows
         self.times = times
@@ -258,6 +265,7 @@ class ReplayEngine:
         self.mock = mock
         self.dry_run = dry_run
         self.verbose = verbose
+        self.admin_key = admin_key
 
         # Metrics
         self.total_flows = len(flows)
@@ -295,12 +303,38 @@ class ReplayEngine:
         try:
             return self._send_batch_http(batch)
         except Exception as exc:
-            if self.verbose:
-                logger.warning(
-                    f"HTTP call to {self.api_url}/v1/flows failed ({type(exc).__name__}: {exc}). "
-                    "Falling back to in-process mock scoring."
-                )
-            return mock_score_batch(batch, self.bundle)
+            hint = ""
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if status == 403:
+                hint = " The API rejected the key: set NS_API_KEY to the same value the API runs with."
+            elif status is None:
+                hint = f" Is the API running at {self.api_url}?"
+            raise ReplayError(f"POST {self.api_url}/v1/flows failed ({type(exc).__name__}: {exc}).{hint} "
+                              "No results were simulated; use --mock only for an explicitly simulated run.") from exc
+
+    def ensure_bundle(self) -> str:
+        """Make sure the API serves this scenario's model; switch it with the admin key if needed. Returns the version."""
+        import httpx
+
+        try:
+            version = httpx.get(f"{self.api_url}/health", timeout=10.0).json().get("model_version", "")
+        except Exception as exc:
+            raise ReplayError(f"API not reachable at {self.api_url} ({type(exc).__name__}: {exc}).") from exc
+        if version.startswith(self.bundle):
+            return version
+        if not self.admin_key:
+            raise ReplayError(
+                f"The API serves '{version}' but this scenario needs '{self.bundle}'. Restart the API with "
+                f"MODEL_REF=local:artifacts/bundles/{self.bundle}, or set NS_ADMIN_KEY so replay can switch the model.")
+        resp = httpx.post(f"{self.api_url}/v1/admin/reload-model", timeout=120.0,
+                          json={"model_ref": f"local:artifacts/bundles/{self.bundle}"},
+                          headers={"X-Admin-Key": self.admin_key})
+        if resp.status_code != 200:
+            raise ReplayError(f"Switching the API to '{self.bundle}' failed: HTTP {resp.status_code} {resp.text[:300]}")
+        version = resp.json().get("model_version", "")
+        if self.verbose:
+            print(f"Switched the API model to {version}")
+        return version
 
     def run(self) -> ReplaySummary:
         """Execute the replay run and return a ReplaySummary."""
@@ -309,12 +343,16 @@ class ReplayEngine:
 
         num_batches = (self.total_flows + self.batch_size - 1) // self.batch_size
 
+        simulated = self.mock or self.dry_run
+        model_version = SIMULATED_LABEL if simulated else self.ensure_bundle()
+
         if self.verbose:
-            print(f"\n================================================================================")
+            print("\n================================================================================")
             print(f"NETSENTINEL REPLAY: {self.scenario_name}")
             print(f"File: {self.file_path} | Bundle: {self.bundle} | Flows: {self.total_flows:,}")
-            print(f"Speed: {self.speed}x | Batch size: {self.batch_size} | Mode: {'Mock' if self.mock else 'Live/Fallback'}")
-            print(f"================================================================================\n")
+            print(f"Speed: {self.speed}x | Batch size: {self.batch_size} | Mode: {'SIMULATED' if simulated else 'LIVE ' + self.api_url}")
+            print(f"Model: {model_version}")
+            print("================================================================================\n")
 
         for b_idx in range(num_batches):
             i_start = b_idx * self.batch_size
@@ -339,7 +377,7 @@ class ReplayEngine:
             self.incidents_updated += resp.incidents_updated
 
             # Update ground truth metrics
-            for flow, res in zip(batch_flows, resp.results):
+            for flow, res in zip(batch_flows, resp.results, strict=True):  # API must answer every flow
                 gt = flow.ground_truth or "UNKNOWN"
                 self.gt_counts[gt] = self.gt_counts.get(gt, 0) + 1
 
@@ -406,6 +444,8 @@ class ReplayEngine:
         if self.verbose:
             print("\n--------------------------------------------------------------------------------")
             print(f"REPLAY SUMMARY: {self.scenario_name}")
+            if simulated:
+                print(f"*** {SIMULATED_LABEL} ***")
             print(f"Flows Replayed : {summary.total_flows:,} in {summary.elapsed_seconds:.2f}s ({summary.throughput_fps:,.0f} flows/s)")
             print(f"Detections     : {summary.detected_known:,} Known | {summary.detected_novel:,} Novel | {summary.detected_benign:,} Benign")
             print(f"Incidents      : {summary.incidents_created:,} Created, {summary.incidents_updated:,} Updated")
@@ -428,10 +468,11 @@ def run_replay(
     mock: bool = False,
     dry_run: bool = False,
     verbose: bool = True,
+    admin_key: str | None = None,
 ) -> ReplaySummary:
     """High-level function to run a replay session from python or CLI."""
     target_file: Path | None = None
-    target_bundle = bundle or "netsentinel-bundle"
+    target_bundle = bundle or "cic-v1"
     target_speed = speed if speed is not None else 1.0
     target_batch = batch_size
     scenario_name = "custom"
@@ -489,6 +530,7 @@ def run_replay(
         mock=mock,
         dry_run=dry_run,
         verbose=verbose,
+        admin_key=admin_key,
     )
     return engine.run()
 
@@ -509,11 +551,18 @@ def main() -> None:
     parser.add_argument(
         "--api-key",
         type=str,
-        default=os.getenv("NS_INGEST_API_KEY", "change-me"),
-        help="Ingest API key",
+        default=os.getenv("NS_API_KEY") or os.getenv("NS_INGEST_API_KEY", "change-me"),
+        help="Ingest API key (default: $NS_API_KEY, the variable the API reads)",
+    )
+    parser.add_argument(
+        "--admin-key",
+        type=str,
+        default=os.getenv("NS_ADMIN_KEY"),
+        help="Admin key: lets replay switch the API to the scenario's model (default: $NS_ADMIN_KEY)",
     )
     parser.add_argument("--bundle", type=str, default=None, help="Bundle name (overrides scenario)")
-    parser.add_argument("--mock", action="store_true", help="Score in-process without network calls")
+    parser.add_argument("--mock", action="store_true",
+                        help="SIMULATED run without the API: verdicts copied from ground truth (never real results)")
     parser.add_argument("--dry-run", action="store_true", help="Parse and validate without sending")
 
     args = parser.parse_args()
@@ -531,6 +580,7 @@ def main() -> None:
             mock=args.mock,
             dry_run=args.dry_run,
             verbose=True,
+            admin_key=args.admin_key,
         )
     except Exception as exc:
         print(f"\n[ERROR] Replay failed: {exc}", file=sys.stderr)

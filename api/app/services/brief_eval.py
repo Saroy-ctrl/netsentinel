@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from api.app.services.brief import (
     PLAYBOOK_ACTIONS,
@@ -24,9 +23,7 @@ from nscore.contracts.schemas import (
     AttackFamily,
     Brief,
     ConfidenceBand,
-    FeatureContribution,
     IncidentDetail,
-    IncidentStatus,
     Verdict,
 )
 
@@ -89,7 +86,7 @@ def _load_base_fixture() -> IncidentDetail:
 def build_10_eval_incidents() -> list[IncidentDetail]:
     """Construct 10 varied evaluation incidents covering all requirements of M5-04."""
     base = _load_base_fixture()
-    now = datetime(2026, 10, 6, 8, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 10, 6, 8, 30, tzinfo=UTC)
 
     # 1. Infiltration (High confidence)
     inc1 = base.model_copy(
@@ -417,7 +414,7 @@ def generate_markdown_report(results: list[BriefEvalResult]) -> str:
         "",
         "> **Task Reference:** `docs/04_tasks.md` § M5-04  ",
         "> **Evaluation Target:** `api/app/services/brief.py`  ",
-        f"> **Execution Mode:** Deterministic Template Harness (10 varied incidents)  ",
+        "> **Execution Mode:** Deterministic Template Harness (10 varied incidents)  ",
         f"> **Overall Result:** **{passed}/{total} Passed ({passed/total*100:.1f}%)**  ",
         "",
         "## 1. Executive Summary & Grounding Protocol",
@@ -467,9 +464,9 @@ def generate_markdown_report(results: list[BriefEvalResult]) -> str:
             f"- **Verdict / Family:** `{r.verdict.value}` / `{r.family.value}`",
             f"- **Confidence:** `{r.confidence:.2f}` (Band: `{r.band}`)",
             f"- **Engine Source:** `{r.source}`",
-            f"- **Generated Brief Text:**",
+            "- **Generated Brief Text:**",
             f"  > *\"{r.brief_text}\"*",
-            f"- **Validation Checks:**",
+            "- **Validation Checks:**",
             f"  * Fact Grounding: {'PASS' if r.is_grounded else 'FAIL'}",
             f"  * Confidence Hedging: {'PASS' if r.hedging_valid else 'FAIL'}",
             f"  * Category Rule: {'PASS' if r.category_rule_valid else 'FAIL'}",

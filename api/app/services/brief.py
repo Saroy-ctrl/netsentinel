@@ -11,15 +11,21 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from nscore.contracts.policy import (
     DEFAULT_SEVERITY,
     SEVERITY,
     confidence_band,
+)
+from nscore.contracts.policy import (
     mitre_for as policy_mitre_for,
+)
+from nscore.contracts.policy import (
     risk_level as policy_risk_level,
+)
+from nscore.contracts.policy import (
     risk_score as policy_risk_score,
 )
 from nscore.contracts.schemas import (
@@ -35,7 +41,7 @@ from nscore.contracts.schemas import (
 )
 
 if TYPE_CHECKING:
-    from openai import AzureOpenAI
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +285,7 @@ def generate_template_brief(incident: IncidentDetail) -> Brief:
         source="template",
         model_deployment=None,
         confidence_band=band,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
 
 
@@ -352,7 +358,7 @@ def generate_brief(
             source="azure_openai",
             model_deployment=deployment,
             confidence_band=band,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
         )
     except Exception as exc:
         logger.warning(
@@ -501,15 +507,15 @@ def incident_data_to_incident_detail(
     # 9. Timestamps
     def parse_dt(val: Any) -> datetime:
         if isinstance(val, datetime):
-            return val if val.tzinfo is not None else val.replace(tzinfo=timezone.utc)
+            return val if val.tzinfo is not None else val.replace(tzinfo=UTC)
         if isinstance(val, str) and val.strip():
             try:
                 s = val.replace("Z", "+00:00")
                 parsed = datetime.fromisoformat(s)
-                return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+                return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
             except Exception:
                 pass
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     first_seen = parse_dt(incident_data.get("first_seen"))
     last_seen = parse_dt(incident_data.get("last_seen"))
@@ -646,8 +652,6 @@ async def generate_and_cache_brief(
 
     # 3. Define generation coroutine executed under caller timeout
     async def _execute_generation() -> Brief:
-        if incident_data.get("_test_timeout"):
-            await asyncio.sleep(effective_timeout + 1.0)
         return await asyncio.to_thread(
             generate_brief,
             incident,
@@ -659,7 +663,7 @@ async def generate_and_cache_brief(
     # 4. Generate brief via M5 source of truth with timeout
     try:
         brief = await asyncio.wait_for(_execute_generation(), timeout=effective_timeout)
-    except (TimeoutError, asyncio.TimeoutError):
+    except TimeoutError:
         logger.warning(
             f"Brief generation timed out after {effective_timeout}s for incident {incident_id}; "
             "falling back to template."
@@ -671,18 +675,10 @@ async def generate_and_cache_brief(
             source="template",
             model_deployment=None,
             confidence_band="low",
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
         )
 
-    # 5. Maintain wording constraints if caller provided explicit legacy flags
-    if incident_data.get("attack_family") == "novel_anomaly" or incident_data.get("verdict") == "anomaly":
-        if "novel_anomaly" not in brief.text:
-            brief = brief.model_copy(update={"text": brief.text + " This incident exhibits a novel_anomaly."})
-    if incident_data.get("attack_family") == "Malicious" or incident_data.get("verdict") == "Malicious":
-        if "Malicious" not in brief.text:
-            brief = brief.model_copy(update={"text": brief.text + " The behavior is classified as Malicious."})
-
-    # 6. Persist brief to repository when update_incident_brief is present
+    # 5. Persist brief to repository when update_incident_brief is present
     if repo is not None and hasattr(repo, "update_incident_brief"):
         try:
             brief_json = brief.model_dump_json()

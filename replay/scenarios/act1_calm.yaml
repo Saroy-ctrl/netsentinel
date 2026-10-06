@@ -2,7 +2,7 @@
 name: "act1_calm"
 description: "Replays benign background traffic from CSE-CIC-IDS2018 to establish calm baseline and zero open incidents."
 file: "replay/samples/2018_benign_background.csv.gz"
-bundle: "netsentinel-bundle"
+bundle: "cic-v1"
 schema: "cic"
 speed: 5.0
 batch_size: 250

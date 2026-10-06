@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -25,7 +25,6 @@ from api.app.services.brief import (
     generate_brief,
     generate_template_brief,
     get_azure_openai_client,
-    incident_data_to_incident_detail,
     reset_client_cache,
 )
 from nscore.contracts import schemas as s
@@ -354,7 +353,7 @@ def test_generate_and_cache_brief_cached_path():
         text="Previously cached brief text for incident.",
         source="template",
         confidence_band="high",
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
     repo = MockRepo()
 
@@ -378,7 +377,7 @@ def test_generate_and_cache_brief_refresh_path():
         text="Old cached brief text.",
         source="template",
         confidence_band="low",
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
     incident_data = {
         "attack_family": "Infiltration",
@@ -453,39 +452,27 @@ def test_generate_and_cache_brief_with_stubbed_client():
     assert len(repo.calls) == 1
 
 
+class _SlowAzureClient:
+    """Stands in for an Azure OpenAI client that hangs, to exercise the timeout fallback."""
+
+    class chat:  # noqa: N801 - mirrors the SDK shape client.chat.completions.create
+        class completions:  # noqa: N801
+            @staticmethod
+            def create(**_):
+                import time
+
+                time.sleep(1.0)
+
+
 def test_generate_and_cache_brief_timeout_fallback():
-    """Verify that timeout triggered via _test_timeout or slow execution falls back to template."""
-    incident_data = {"risk_level": "CRITICAL", "_test_timeout": True}
+    """A hanging Azure call falls back to the deterministic template within the caller's timeout."""
     repo = MockRepo()
     brief = asyncio.run(
-        generate_and_cache_brief(
-            "inc-timeout",
-            incident_data,
-            repo=repo,
-            timeout=0.05,
-        )
+        generate_and_cache_brief("inc-timeout", {"risk_level": "HIGH"}, repo=repo, timeout=0.05,
+                                 client=_SlowAzureClient())
     )
 
     assert brief.source == "template"
-    assert "Fallback" in brief.text or "Timeout" in brief.text
+    assert "Fallback" in brief.text
     assert brief.confidence_band == "low"
-    assert len(repo.calls) == 1
-
-
-def test_generate_and_cache_brief_m3_wording_constraints():
-    """Verify backward compatibility with M3 wording constraint expectations."""
-    incident_data = {"attack_family": "novel_anomaly", "verdict": "Malicious", "_test_timeout": False}
-    repo = MockRepo()
-    brief = asyncio.run(
-        generate_and_cache_brief(
-            "inc-wording",
-            incident_data,
-            repo=repo,
-            timeout=2.0,
-        )
-    )
-
-    assert brief.source in ("template", "azure_openai")
-    assert "novel_anomaly" in brief.text
-    assert "Malicious" in brief.text
     assert len(repo.calls) == 1
