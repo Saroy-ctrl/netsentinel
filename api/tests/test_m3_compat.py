@@ -1,6 +1,7 @@
 """Regression tests found by running the API against the real M2 bundles (see docs/model_card.md §3):
 
 * SHAP is capped per batch (it costs 10-100 ms/flow); an incident's SHAP mean must not be diluted by unexplained flows
+* yet every incident touched by a batch gets at least one explained flow
 * the drift monitor must persist its snapshot AFTER the scoring transaction commits (else: "database is locked")
 * a Brief must satisfy the contract (`source` is "azure_openai" or "template")
 """
@@ -40,20 +41,59 @@ def conn(tmp_path: Path):
     c.close()
 
 
+def _one_pair(payload: dict) -> dict:
+    """Every flow from the same source to the same destination, so incidents differ only by family."""
+    for f in payload["flows"]:
+        f["meta"]["src_ip"], f["meta"]["dst_ip"] = "10.9.9.9", "192.168.9.9"
+    return payload
+
+
 def test_shap_is_capped_per_batch_but_every_flow_is_scored(bundle, conn, monkeypatch):
     monkeypatch.setenv("NS_SHAP_MAX_PER_BATCH", "3")
     c, _ = conn
-    result = ScoringService(bundle).score_batch(schemas.FlowBatch.model_validate(_make_flow_payload(bundle, n=80)), c)
+    payload = _one_pair(_make_flow_payload(bundle, n=80))
+    result = ScoringService(bundle).score_batch(schemas.FlowBatch.model_validate(payload), c)
     attacks = [r for r in result.results if r.verdict is not Verdict.BENIGN]
-    assert len(attacks) > 3, "precondition: the batch must contain more attack flows than the cap"
+    incidents = {r.incident_id for r in attacks}
+    assert len(attacks) > max(3, len(incidents)), "precondition: more attack flows than the cap and the incidents"
     assert result.received == 80 and len(result.results) == 80
-    assert sum(1 for r in attacks if r.top_features) <= 3
-    # explained flows are the most suspicious ones
-    explained = [r.p_attack for r in attacks if r.top_features]
-    unexplained = [r.p_attack for r in attacks if not r.top_features]
-    assert min(explained) >= max(unexplained)
-    # every attack flow still lands in an incident
+    assert sum(1 for r in attacks if r.top_features) <= max(3, len(incidents))
+    # every attack flow still lands in an incident, and every incident got an explanation
     assert all(r.incident_id for r in attacks)
+    assert all(any(r.top_features for r in attacks if r.incident_id == inc) for inc in incidents)
+
+
+def test_every_incident_gets_an_explanation_even_when_its_flows_rank_below_the_cap(monkeypatch):
+    """The bug: a novel-anomaly incident (risk 89 HIGH) had no SHAP; its flows were not in the top 25 by p_attack."""
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from api.app.scoring import _select_for_shap
+    from nscore.contracts.schemas import AttackFamily
+
+    t0 = datetime(2026, 10, 6, tzinfo=UTC)
+    meta = [SimpleNamespace(src_ip=s, dst_ip="d", observed_at=t0) for s in ("a", "a", "a", "a", "b", "c", "c")]
+    verdicts = [Verdict.KNOWN_ATTACK] * 4 + [Verdict.NOVEL_ANOMALY, Verdict.BENIGN, Verdict.KNOWN_ATTACK]
+    families = [AttackFamily.DDOS] * 4 + [AttackFamily.UNKNOWN, AttackFamily.BENIGN, AttackFamily.DOS]
+    p = [0.99, 0.98, 0.97, 0.96, 0.30, 0.01, 0.40]
+    # cap 2: group a (best 0), novel group b (4) and group c (6) each get one; benign (5) never; no room for extras
+    assert _select_for_shap(meta, verdicts, families, p, cap=2) == [0, 4, 6]
+    # cap 5: the three representatives, then the most suspicious of the rest (1 and 2)
+    assert _select_for_shap(meta, verdicts, families, p, cap=5) == [0, 1, 2, 4, 6]
+    # cap 0 disables SHAP entirely
+    assert _select_for_shap(meta, verdicts, families, p, cap=0) == []
+    # the same key 10 minutes later is a separate incident (correlation window 5 min), so it gets its own explanation
+    meta[3] = SimpleNamespace(src_ip="a", dst_ip="d", observed_at=t0 + timedelta(minutes=10))
+    assert _select_for_shap(meta, verdicts, families, p, cap=2) == [0, 3, 4, 6]
+
+
+def test_incidents_in_the_database_all_carry_top_features(bundle, conn, monkeypatch):
+    monkeypatch.setenv("NS_SHAP_MAX_PER_BATCH", "2")
+    c, _ = conn
+    ScoringService(bundle).score_batch(schemas.FlowBatch.model_validate(_make_flow_payload(bundle, n=120)), c)
+    rows = c.execute("SELECT incident_id, top_features_json FROM incidents").fetchall()
+    assert len(rows) > 2, "precondition: more incidents than the cap"
+    assert all(r["top_features_json"] not in (None, "", "[]") for r in rows)
 
 
 def test_shap_cap_can_be_disabled_by_a_large_value(bundle, conn, monkeypatch):
