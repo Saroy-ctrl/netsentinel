@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../:/app
+    environment:
+      - NS_MOCK=1
+      - NS_API_KEY=test_api_key
+      - NS_ADMIN_KEY=admin_secret
+
+  dashboard:
+    build:
+      context: ..
+      dockerfile: Dockerfile.dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ../:/app
+    environment:
+      - NS_API_URL=http://api:8000
+    depends_on:
+      - api
