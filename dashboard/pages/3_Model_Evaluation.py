@@ -347,9 +347,10 @@ with tab_loao:
             )
         st.dataframe(pd.DataFrame(loao_table_rows), width="stretch", hide_index=True)
         st.caption(
-            "Key takeaway: High-volume flood attacks (DDoS, DoS) and botnets generalize robustly when unseen, "
-            "and are correctly flagged as Novel Anomalies by the confidence gate. "
-            "Targeted low-volume reconnaissance (e.g. internal scans) has lower zero-day recall."
+            "Key takeaway: unseen DoS tools are caught (~100%) and DoS/DDoS families mostly (79-85%); detections of "
+            "unseen attacks are flagged as Novel Anomalies. Botnet is partial (66%, 51-76% across seeds), brute force "
+            "is caught at this budget but fragile below it, and internal scans (Infiltration) and the LOIC-HTTP tool "
+            "are missed (~1%). Ranges come from 3 seeds; see docs/model_card.md section 4."
         )
     else:
         st.info("No LOAO evaluation records present in this report.")
@@ -357,66 +358,39 @@ with tab_loao:
 
 # ── Tab 3: Real-World Performance (LUFlow) ───────────────────────────────────
 with tab_realworld:
-    st.markdown("#### Real-World Traffic & Label-Free Recalibration (LUFlow)")
+    st.markdown("#### Real-World Traffic, Month by Month (LUFlow)")
     st.markdown(
-        "LUFlow captures live, unscripted internet traffic at Lancaster University honeypots. "
-        "As time passes, concept drift degrades model performance. NetSentinel demonstrates that "
-        "refitting the threshold and drift monitor on a **recent label-free benign window** "
-        "fully restores detection without requiring new attack labels."
+        "LUFlow is live, unscripted internet traffic from Lancaster University honeypots. The model is trained on the "
+        "first two months and then frozen; every later month is scored with it. **Drift (PSI) is a warning light**: "
+        "it says the traffic changed, not that detection failed. *Recalibrated* = thresholds and the benign-only "
+        "IsolationForest refit on a recent, unlabelled benign window; on this data it did not give a consistent gain."
     )
 
     rw_items = [e for e in report.external if e.dataset == "LUFlow"]
     tool_items = [e for e in report.external if e.protocol == "tool_holdout"]
 
+    def _psi_label(psi: float | None) -> str:
+        if psi is None:
+            return "n/a"
+        return f"{psi:.2f} ({'ALERT' if psi >= 0.25 else 'WATCH' if psi >= 0.10 else 'OK'})"
+
     if rw_items:
-        temporal_item = next(
-            (e for e in rw_items if e.protocol == "real_world_temporal"), None
-        )
-        recal_item = next(
-            (e for e in rw_items if e.protocol == "real_world_recalibrated"), None
-        )
-
-        temporal_novel = (
-            temporal_item.novel_recall
-            if temporal_item and temporal_item.novel_recall is not None
-            else 0.45
-        )
-        recal_novel = (
-            recal_item.novel_recall
-            if recal_item and recal_item.novel_recall is not None
-            else 0.52
-        )
-
-        col_drifted, col_recovered = st.columns(2)
-        with col_drifted:
-            st.markdown(
-                f"<div class='ns-card ns-card-high'>"
-                f"<h4 style='color:{theme.CLR_HIGH};margin-top:0;'>⚠️ Drifted State (Month +3)</h4>"
-                f"<div style='font-size:0.86rem;color:{theme.TXT_SECONDARY};margin-bottom:8px;'>"
-                f"{temporal_item.notes if temporal_item else 'Trained on early months, tested 3 months later'}</div>"
-                f"<div style='font-size:1.6rem;font-weight:700;color:{theme.CLR_HIGH};'>"
-                f"Max PSI: {temporal_item.max_psi if temporal_item else 0.31:.2f} (ALERT)</div>"
-                f"<p style='margin:4px 0;'>Binary Recall: <b>{temporal_item.binary_recall:.1%}</b></p>"
-                f"<p style='margin:4px 0;'>Benign FPR: <b>{temporal_item.benign_fpr:.2%}</b></p>"
-                f"<p style='margin:4px 0;'>Novel Anomaly Capture: <b>{temporal_novel:.1%}</b></p>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-
-        with col_recovered:
-            st.markdown(
-                f"<div class='ns-card ns-card-low' style='border-left-color:{theme.CLR_DRIFT_OK};'>"
-                f"<h4 style='color:{theme.CLR_DRIFT_OK};margin-top:0;'>✅ Recalibrated State (Recovered)</h4>"
-                f"<div style='font-size:0.86rem;color:{theme.TXT_SECONDARY};margin-bottom:8px;'>"
-                f"{recal_item.notes if recal_item else 'Thresholds refit on label-free benign traffic window'}</div>"
-                f"<div style='font-size:1.6rem;font-weight:700;color:{theme.CLR_DRIFT_OK};'>"
-                f"Max PSI: {recal_item.max_psi if recal_item else 0.07:.2f} (OK)</div>"
-                f"<p style='margin:4px 0;'>Binary Recall: <b>{recal_item.binary_recall:.1%}</b></p>"
-                f"<p style='margin:4px 0;'>Benign FPR: <b>{recal_item.benign_fpr:.2%}</b></p>"
-                f"<p style='margin:4px 0;'>Novel Anomaly Capture: <b>{recal_novel:.1%}</b></p>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
+        by_period: dict[str, dict[str, Any]] = {}
+        for e in rw_items:
+            row = by_period.setdefault(e.period or "?", {"Month": e.period or "?"})
+            if e.protocol == "real_world_temporal":
+                row["Max PSI (status)"] = _psi_label(e.max_psi)
+                row["Recall (frozen)"] = f"{e.binary_recall:.1%}"
+                row["Benign FPR (frozen)"] = f"{e.benign_fpr:.2%}"
+                row["Outliers flagged by IForest"] = f"{e.novel_recall:.0%}" if e.novel_recall is not None else "n/a"
+            elif e.protocol == "real_world_recalibrated":
+                row["Recall (recalibrated)"] = f"{e.binary_recall:.1%}"
+                row["Benign FPR (recalibrated)"] = f"{e.benign_fpr:.2%}"
+        st.dataframe(pd.DataFrame([by_period[k] for k in sorted(by_period)]), width="stretch", hide_index=True)
+        st.caption("Source: the loaded bundle's evaluation report (docs/experiments.md §8). Shown when a LUFlow bundle "
+                   "is loaded; the 2018 bundle has no LUFlow rows.")
+    else:
+        st.info("This bundle has no LUFlow results. Load `luflow-v1`, or see docs/experiments.md §8.")
 
     if tool_items:
         st.markdown("**Tool Holdout Studies (e.g. DDoS-HOIC)**")
