@@ -34,8 +34,9 @@ streamlit run dashboard/app.py                          # http://localhost:8501
 $env:NS_API_URL = "http://127.0.0.1:8000"; $env:NS_API_KEY = "<demo-key>"; $env:NS_ADMIN_KEY = "<demo-admin-key>"
 ```
 
-Optional: set `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY` / `AZURE_OPENAI_DEPLOYMENT` for Azure OpenAI briefs. Without them
-the briefs come from the deterministic template (`source: template`), which is what the outputs below show.
+The API and replay read the repo's `.env` (shell variables win). With the `AZURE_OPENAI_*` values filled in, briefs come from Azure
+OpenAI (`gpt-4.1-mini`, `source: azure_openai`, ~5 s); without them, or if Azure is slow, from the deterministic template
+(`source: template`). The brief texts quoted below are template briefs; Azure briefs carry the same facts in freer wording.
 
 ### Safety & Grounding Rules
 - **No external targets:** all traffic is replayed from audited offline slices (`replay/samples/`).

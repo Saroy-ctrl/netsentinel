@@ -39,6 +39,15 @@ from nscore.features.transform import MissingFeaturesError
 
 logger = logging.getLogger(__name__)
 
+# Settings from the repo's .env (AZURE_OPENAI_*, MODEL_REF, NS_* keys). Variables already set in the shell win.
+# Tests set NS_LOAD_DOTENV=0 so a developer's real keys are never used by the test suite.
+if os.environ.get("NS_LOAD_DOTENV", "1") == "1":
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
+
 # ---------------------------------------------------------------------------
 # Lifespan – bundle loading (M3-03)
 # ---------------------------------------------------------------------------

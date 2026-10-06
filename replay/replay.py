@@ -552,6 +552,12 @@ def run_replay(
 
 
 def main() -> None:
+    try:  # NS_API_URL / NS_API_KEY / NS_ADMIN_KEY from the repo's .env; shell variables win
+        from dotenv import load_dotenv
+
+        load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
+    except ImportError:
+        pass
     parser = argparse.ArgumentParser(description="NetSentinel Replay Engine (M5-05)")
     parser.add_argument("--scenario", "-s", type=str, help="Scenario YAML name or path")
     parser.add_argument("--file", "-f", type=str, help="CSV/CSV.gz path directly")

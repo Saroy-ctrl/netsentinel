@@ -12,7 +12,8 @@ Why it is built this way (demo-proof):
   * the SDK client is injectable (`client=`), so tests run against a fake without credentials
 
 Configuration (environment, never hard-coded): AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, AZUREML_WORKSPACE;
-credentials via azure.identity.DefaultAzureCredential (az login, service principal env vars, managed identity ...).
+credentials via azure.identity.DefaultAzureCredential (az login, service principal env vars, managed identity ...;
+browser sign-in only when NS_AZURE_INTERACTIVE=1, which scripts/azure_register.py sets).
 """
 
 from __future__ import annotations
@@ -49,7 +50,11 @@ def get_client():
     missing = [k for k in needed if not os.environ.get(k)]
     if missing:
         raise RuntimeError(f"set {', '.join(missing)} (see .env.example and docs/azure_setup.md)")
-    return MLClient(DefaultAzureCredential(), os.environ["AZURE_SUBSCRIPTION_ID"], os.environ["AZURE_RESOURCE_GROUP"],
+    # NS_AZURE_INTERACTIVE=1 (set by scripts/azure_register.py) adds a browser sign-in as the last resort, for machines
+    # without `az login` or a service principal. Never set for the API server: a server must not open browser windows.
+    interactive = os.environ.get("NS_AZURE_INTERACTIVE") == "1"
+    credential = DefaultAzureCredential(exclude_interactive_browser_credential=not interactive)
+    return MLClient(credential, os.environ["AZURE_SUBSCRIPTION_ID"], os.environ["AZURE_RESOURCE_GROUP"],
                     os.environ["AZUREML_WORKSPACE"])
 
 

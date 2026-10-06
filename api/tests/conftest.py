@@ -4,7 +4,11 @@ Several tests used to set NS_MOCK / NS_DB_PATH at import time or leave them behi
 test file ran first. Tests that need mock mode or a DB path set them themselves (monkeypatch or their own fixture).
 """
 
+import os
+
 import pytest
+
+os.environ["NS_LOAD_DOTENV"] = "0"  # runs before any test module imports the app: never read a developer's .env
 
 
 @pytest.fixture(autouse=True)
