@@ -49,4 +49,64 @@ Downloads `@latest` into an empty temporary cache, verifies the hashes and loads
 
 ## 2. Azure OpenAI (M5-02)
 
-*Owner: M5. Provision the resource and a `gpt-4o-mini`-class deployment, then fill `AZURE_OPENAI_*` in `.env`. Add the setup notes here.*
+Azure OpenAI provides grounded GenAI incident summaries for the SOC queue using a `gpt-4o-mini`-class model.
+Like Azure ML, it is designed with a **deterministic local fallback** (`source: "template"`) so the system runs smoothly even if Azure OpenAI is unconfigured or unreachable.
+
+### Provision the Azure OpenAI Resource
+```bash
+az login
+az account set --subscription "<subscription id>"
+
+# Register cognitive services provider (if not already registered)
+az provider register --namespace Microsoft.CognitiveServices
+
+# Create Azure OpenAI resource in a region supporting gpt-4o-mini (e.g. eastus2, westeurope)
+az cognitiveservices account create \
+  -n netsentinel-openai \
+  -g netsentinel-rg \
+  -l eastus2 \
+  --kind OpenAI \
+  --sku S0
+```
+
+### Deploy the Model (`gpt-4o-mini`)
+```bash
+az cognitiveservices account deployment create \
+  -g netsentinel-rg \
+  -n netsentinel-openai \
+  --deployment-name gpt-4o-mini \
+  --model-name gpt-4o-mini \
+  --model-version "2024-07-18" \
+  --model-format OpenAI \
+  --sku-capacity 10 \
+  --sku-name Standard
+```
+
+### Configure `.env`
+Retrieve the resource endpoint and access key:
+```bash
+az cognitiveservices account show -n netsentinel-openai -g netsentinel-rg --query properties.endpoint -o tsv
+az cognitiveservices account keys list -n netsentinel-openai -g netsentinel-rg --query key1 -o tsv
+```
+
+Add these values to your local `.env` file (never commit `.env`):
+```env
+AZURE_OPENAI_ENDPOINT=https://<resource-name>.openai.azure.com/
+AZURE_OPENAI_API_KEY=<your-api-key>
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+AZURE_OPENAI_API_VERSION=2024-10-21
+```
+
+### Offline & Fallback Behaviour (Demo Insurance)
+The brief service (`api/app/services/brief.py`, M5-03) is built to be demo-proof:
+* **Unconfigured or Missing Credentials:** If `AZURE_OPENAI_ENDPOINT` or `AZURE_OPENAI_API_KEY` are unset or empty, the service automatically skips remote network calls and returns a deterministic, grounded template brief (`source: "template"`).
+* **Strict SLA Timeout:** Remote generation calls enforce an **8.0-second timeout** (`LLM_TIMEOUT_SECONDS = 8.0`). If Azure OpenAI latency spikes, the service immediately aborts the call and falls back to the template.
+* **Network & API Error Resilience:** Transient HTTP 429 (rate limits), 500 errors, or network disconnections are caught and logged as warnings; the incident queue is never blocked.
+* **Lazy Client Singleton:** The Azure OpenAI client is instantiated only when first needed and cached across calls.
+* **Brief Caching:** Once generated, briefs are stored on the incident (`incident.brief`) and reused across queue views unless explicitly requested with `refresh=True`.
+
+### Verification
+Run the unit test suite with stubbed and template tests:
+```bash
+python -m pytest api/tests/test_brief.py
+```
